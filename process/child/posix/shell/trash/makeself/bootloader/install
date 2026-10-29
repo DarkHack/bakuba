@@ -1,0 +1,36 @@
+#!/bin/sh
+#racine="${racine:-/etc/darksrv}"
+#. $racine/lib-sh/shTools
+# have to be compiled by shc
+
+cmdEcho="$(which echo)"
+cmdTr="$(which tr)"
+cmdCut="$(which cut)"
+cmdPrintf="$(which printf)"
+. ./lib-sh/json
+
+cmdCat="$(which cat)"
+cmdGrep="$(which grep)"
+cmdWget="$(which wget)"
+cmdDmidecode="$(which dmidecode)"
+cmdMd5sum="$(which md5sum)"
+cmdOpenssl="$(which openssl)"
+cmdBase64="$(which base64)"
+
+cmdList="cmdTr cmdCat cmdCut cmdEcho cmdPrintf cmdGrep cmdWget cmdDmidecode cmdMd5sum"
+cmdList="$cmdList cmdOpenssl cmdBase64"
+
+for cmd in $cmdList;do
+ if [ -z "$(eval echo \$$cmd)" ];then echo "missing cmd:$cmd";exit 1;fi
+done
+
+b64ciphers="$($cmdOpenssl ciphers | $cmdBase64)"
+
+nodeuuid=$($cmdPrintf "$($cmdCat /etc/machine-id | $cmdTr '\\n' '_' && $cmdDmidecode -t 4 2>/dev/null | $cmdGrep ID | $cmdCut -d: -f2 | $cmdTr ' ' '_' )" | $cmdMd5sum | $cmdCut -f1 -d' ');
+
+# { nodeuuid : data64, ciphers : data64 }
+dataSend="$(echo $dataSend | jsonInObjectWrite nodeuuid "$(echo $nodeuuid | $cmdBase64)")"
+dataSend="$(echo $dataSend | jsonInObjectWrite ciphers "$b64ciphers" )"
+#$cmdPrintf "$dataSend"
+
+$cmdPrintf wget --post-data="$(echo $dataSend | base64)"

@@ -1,0 +1,99 @@
+#!/bin/sh
+# Copyright 2011-2026 Nicolas "DarkHack" Chapuis
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+cmdList="cmdSh cmdEcho cmdPrintf cmdCat cmdSleep cmdKill cmdBase64 cmdOpenssl cmdShuf"
+
+for cmd in $cmdList;do
+ if [ -z "$(eval echo \$$cmd)" ];then echo "[FATAL] missing cmd:$cmd";exit 1;fi
+done
+
+shLog="init-install"
+shDebugEnable="1"
+shDebug "$*"
+
+shDebug 1 "$racine/bakuba/global/vars"
+for param in $*;do
+ if [ "$param" = "force_initv" ];then 
+  force_initv=1;
+  shDebug 1 "force_initv"
+ fi
+done
+$(shInclude $racine/bakuba/global/vars)
+shLog="$pName-install:"
+
+shDebug "[ INFO ] $racine/chroot/lib-sh/chroot && $racine/systemctl/lib-sh/systemctl && shInclude $racine/rsyslog/lib-sh/rsyslog"
+$(shInclude $racine/chroot/lib-sh/chroot) && $(shInclude $racine/systemctl/lib-sh/systemctl) && $(shInclude $racine/rsyslog/lib-sh/rsyslog)
+
+#|-----------------------------------------------------------------------|
+#| which "directory" tools	: mkdir | chmod | chgrp | mount | umount |
+#|-----------------------------------------------------------------------|
+shDebug "[ INFO ] $racine/which/lib-sh/directory"
+$(shInclude $racine/which/lib-sh/directory)
+
+shDebug "[ INFO ] which :sh touch kill $pName"
+cmdSh="$(which sh)"
+cmdTouch="$(which touch)"
+cmdKill="$(which kill)"
+#if [ -z "$cmdDaemon" ];then cmdDaemon="$(which $pName)";fi
+#if [ -z "$cmdDaemon" ];then cmdDaemon="$pFolder/$pName";fi
+echo pChrootDir="$pChrootDir"\
+ pName="$pName"\
+ pUser="$pUser"\
+ pGroup="$pGroup"\
+ pStart="$pStart"\
+ pStartDebug="$pStartDebug"\
+ pCacheDir="$pCacheDir"\
+ pServiceInfo="$pServiceInfo"\
+ pServiceDoc="$pServiceDoc"\
+ cmdDaemon="$cmdDaemon"\
+ cmdDaemonFull="$cmdDaemonFull"\
+ pLibFiles="$pLibFiles"\
+ pLibFolders="$pLibFolders"\
+ pDebugFile="$pDebugFile"\
+ pParamStart="$pParamStart"\
+ pParamStartDebug="$pParamStartDebug"\
+ pPreStart="$pPreStart"\
+ pParamStartDebug="$pParamStartDebug"\
+ pMountFolders="$pMountFolders"\
+ pDirUserGroupRight="$pDirUserGroupRight"\
+ pDirStruct="$pDirStruct"\
+ pidFile="$pidFile"\
+ pCopyLib="$pCopyLib"\
+ 
+ pChrootDir="$pChrootDir"\
+ pName="$pName"\
+ pUser="$pUser"\
+ pGroup="$pGroup"\
+ pStart="$pStart"\
+ pStartDebug="$pStartDebug"\
+ pCacheDir="$pCacheDir"\
+ pServiceInfo="$pServiceInfo"\
+ pServiceDoc="$pServiceDoc"\
+ cmdDaemon="$cmdDaemon"\
+ cmdDaemonFull="$cmdDaemonFull"\
+ pLibFiles="$pLibFiles"\
+ pLibFolders="$pLibFolders"\
+ pDebugFile="$pDebugFile"\
+ pParamStart="$pParamStart"\
+ pParamStartDebug="$pParamStartDebug"\
+ pPreStart="$pPreStart"\
+ pParamStartDebug="$pParamStartDebug"\
+ pMountFolders="$pMountFolders"\
+ pDirUserGroupRight="$pDirUserGroupRight"\
+ pDirStruct="$pDirStruct"\
+ pidFile="$pidFile"\
+ pCopyLib="$pCopyLib"\
+# $racine/services/bin/install
+

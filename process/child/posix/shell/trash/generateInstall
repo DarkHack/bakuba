@@ -1,0 +1,48 @@
+#!/bin/sh
+# Copyright 2011-2026 Nicolas "DarkHack" Chapuis
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# lib-sh/json
+
+cmdList="cmdTr cmdCat cmdCut cmdEcho cmdPrintf cmdGrep cmdWget cmdMd5sum"
+cmdList="$cmdList cmdBase64 cmdCp cmdRm cmdMkdir cmdChmod"
+
+for cmd in $cmdList;do
+ if [ -z "$($cmdPrintf printf \$$cmd)" ];then $cmdPrintf "missing cmd:$cmd";exit 1;fi
+done
+
+generateInstall() {
+ read ipKey
+ local tmpMakeSelf="$1"
+ local b64ipKey="$(echo $ipKey | $cmdBase64 2>/dev/null)"
+ 
+ $cmdPrintf "$cmdPrintf data:$dataSend"
+ cd $tmpMakeSelf
+ VER=`cat VERSION`
+ $cmdMkdir -p /tmp/bakuba-$VER release
+ $cmdCp -a makeself* README.md COPYING VERSION .gitmodules bootloader /tmp/bakuba-$VER/
+ $cmdChmod -R u+x $tmpMakeSelf
+# create a temporary named pipe
+#PIPE=$(mktemp -u)
+#echo "pipe:$PIPE"
+#mkfifo $PIPE
+# attach it to file descriptor 3
+#exec 3<>$PIPE
+# unlink the named pipe
+#rm $PIPE
+#$cmdPrintf "coucou" >&3
+
+# ./makeself.sh --ssl-encrypt --ssl-pass-src "fd:3" --notemp /tmp/makeself-$VER release/makeself-$VER.run "Makeself v$VER" echo "Makeself has extracted itself" 
+ $tmpMakeSelf/makeself.sh --notemp /tmp/bakuba-$VER release/bakuba-$VER.run "Makeself v$VER" $cmdPrintf "Makeself bakuba has extracted itself" 
+}

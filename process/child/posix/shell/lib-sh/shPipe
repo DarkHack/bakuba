@@ -1,0 +1,156 @@
+#!/bin/sh
+# Copyright 2011-2026 Nicolas "DarkHack" Chapuis
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#shPipeDebug="1"
+shPipeDebug=""
+
+cmdList="cmdSh cmdCat cmdTimeout cmdTr cmdXargs cmdCut cmdWget cmdBase64 cmdEcho cmdPrintf cmdSeq"
+cmdList="$cmdList cmdRm cmdMktemp cmdMkfifo cmdKill cmdSleep cmdTee"
+cmdList="$cmdList cmdOpenssl"
+
+shErrorOnMissing $cmdList >&2
+if [ -z "$shPipe_init" ];then
+ readonly shPipe_init=1
+ readonly shPipeEndString="__ENDOFSTRING__"
+fi
+shPipeInit() {
+ local shLastListFreePipe="$(shPipeRead $shPipeDataPipe 2>/dev/null | $cmdTr -d '\n' )"
+ local shNewPipe=""
+ local shLogfunc="shPipeInit($shLastListFreePipe)"
+
+ [ "$shPipeDebug" ] && shLog $shLog_TRACE "$shLogfunc" >&2 
+ local shPipesFree=""
+ for freePipe in $($cmdPrintf $shLastListFreePipe| $cmdTr -s ': ' '\n');do
+  if [ -z "$shNewPipe" ];then local shNewPipe=$freePipe;
+  else local shPipesFree="$freePipe:$shPipesFree";fi
+ done
+ [ "$shPipeDebug" ] && shLog $shLog_TRACE "$shLogfunc => $shNewPipe / $shPipesFree" >&2
+ $cmdPrintf $shPipesFree | shPipeWrite $shPipeDataPipe 2>/dev/null
+ $cmdPrintf "$shNewPipe"
+}
+shPipeOpen() {
+ local shLogfunc="shPipeOpen($1)"
+ local pipeToOpen="$1"
+ local tmpFilePipe="${2:-$($cmdMktemp -u)}"
+ $cmdMkfifo $tmpFilePipe
+ [ "$shPipeDebug" ] && shLog $shLog_TRACE "$shLogfunc:$pipeToOpen" >&2
+ 
+ case $pipeToOpen in
+ 	3 ) exec 3<>"$tmpFilePipe";;
+ 	4 ) exec 4<>"$tmpFilePipe";;
+ 	5 ) exec 5<>"$tmpFilePipe";;
+ 	6 ) exec 6<>"$tmpFilePipe";;
+ 	7 ) exec 7<>"$tmpFilePipe";;
+ 	8 ) exec 8<>"$tmpFilePipe";;
+ 	9 ) exec 9<>"$tmpFilePipe";;
+ 	* )  [ "$shPipeDebug" ] && shLog $shLog_ERROR "$shLogfunc:echec no more 7 pipe secure." >&2;;
+ esac
+ [ -z "$2" ] && $cmdRm "$tmpFilePipe"
+}
+shPipeFree() {
+ local shLastListFreePipe="$(shPipeRead $shPipeDataPipe 2>/dev/null | $cmdTr -d '\n' )"
+ local shLogfunc="shPipeFree($1/shLastListFreePipe)"
+ local idxPipe="$1"
+ shPipesFree="$idxPipe:$shPipesFree"
+ [ "$shPipeDebug" ] && shLog $shLog_TRACE "$shLogfunc:$shNewPipe/$shPipesFree" >&2
+}
+shPipeCloseWrite() {
+ local shLogfunc="shPipeCloseWrite($1)"
+ local idxPipe="$1"
+ $cmdPrintf "\r\n\0" >&$idxPipe
+ case $idxPipe in
+ 	3 ) exec 3>&-;;
+ 	4 ) exec 4>&-;;
+ 	5 ) exec 5>&-;;
+ 	6 ) exec 6>&-;;
+ 	7 ) exec 7>&-;;
+ 	8 ) exec 8>&-;;
+ 	9 ) exec 9>&-;;
+ 	* ) [ "$shPipeDebug" ] && shLog $shLog_ERROR "$shLogfunc:echec no more 7 pipe secure." >&2;;
+ esac
+
+ [ "$shPipeDebug" ] && shLog $shLog_TRACE "$shLogfunc" >&2
+}
+shPipeCloseRead() {
+ local shLogfunc="shPipeCloseRead($1)"
+ local idxPipe="$1"
+ 
+ case $idxPipe in
+ 	3 ) exec 3<&-;;
+ 	4 ) exec 4<&-;;
+ 	5 ) exec 5<&-;;
+ 	6 ) exec 6<&-;;
+ 	7 ) exec 7<&-;;
+ 	8 ) exec 8<&-;;
+ 	9 ) exec 9<&-;;
+ 	* ) [ "$shPipeDebug" ] && shLog $shLog_ERROR "$shLogfunc:echec no more 7 pipe secure." >&2;;
+ esac
+ [ "$shPipeDebug" ] && shLog $shLog_TRACE "$shLogfunc" >&2
+}
+shPipeWrite() {
+ local shLogfunc="shPipeWrite($1)"
+ local idxPipe="$1"
+ local noClose="$2"
+ 
+ [ "$shPipeDebug" ] && shLog $shLog_TRACE "$shLogfunc:write main to pipe $idxPipe" >&2
+ $cmdCat <&0 >&$idxPipe
+# $cmdTee >&$idxPipe <&0
+ if [ -n "$noClose" ];then
+  [ "$shPipeDebug" ] && shLog $shLog_TRACE "$shLogfunc:write end, pipe write stay open" >&2
+ else
+  $cmdPrintf "\n$shPipeEndString" >&$idxPipe
+  [ "$shPipeDebug" ] && shLog $shLog_TRACE "$shLogfunc:write end, pipe write closed" >&2
+ fi
+}
+IFS="
+"
+shPipeReadLow() 
+{
+ local shLogfunc="shPipeReadLow($1)"
+ local idxPipe="$1"
+ [ "$shPipeDebug" ] && shLog $shLog_TRACE "$shLogfunc:read" >&2
+ # facultatif : "réveiller" le lecteur
+ $cmdPrintf "" >&$idxPipe
+ while read line <&$idxPipe; do
+  [ "$line" = "$shPipeEndString" ] && break;
+  $cmdPrintf "$line"
+ done
+}
+shPipeRead() {
+ local shLogfunc="shPipeRead($1)"
+ local idxPipe="$1"
+ local timeout="${2:-10}"  # défaut 10s
+ 
+ $cmdPrintf "" >&$idxPipe
+ shPipeReadLow $idxPipe &
+ local readPid=$!
+ [ "$shPipeDebug" ] && shLog $shLog_TRACE "$shLogfunc:try $$ => $readPid" 1>&2;
+ # while pipeLow is read, wait 1 s, after 10s "timeout"
+ $cmdPrintf "while $cmdKill -0 $readPid 2>/dev/null; do $cmdSleep 1;done;" | $cmdTimeout $timeout "$cmdSh" 1>&2;
+ EXIT_STATUS=$?
+ # if timeout ?
+ if [ $EXIT_STATUS -eq 124 ]
+ then
+  # kill read.
+  $cmdKill -9 $readPid 2>/dev/null
+  [ "$shPipeDebug" ] && shLog $shLog_ERROR "$shLogfunc:echec" >&2
+ else
+  [ "$shPipeDebug" ] && shLog $shLog_TRACE "$shLogfunc:ok" >&2
+ fi
+}
+shPipeDataPipe=9
+shPipeOpen $shPipeDataPipe 2>/dev/null
+$cmdSeq -s ':' 3 8  | shPipeWrite $shPipeDataPipe 2>/dev/null
+[ "$shPipeDebug" ] && shLog $shLog_TRACE "pipe init : $($cmdSeq -s ':' 3 8) " >&2
+

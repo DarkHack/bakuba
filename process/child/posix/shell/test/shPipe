@@ -1,0 +1,44 @@
+#!/bin/sh
+# Copyright 2011-2026 Nicolas "DarkHack" Chapuis
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+cmdList="cmdSh cmdCat cmdTimeout cmdTr cmdXargs cmdCut cmdWget cmdBase64 cmdEcho cmdPrintf"
+cmdList="$cmdList cmdRm cmdMktemp cmdMkfifo"
+cmdList="$cmdList cmdOpenssl"
+
+for cmd in $cmdList;do
+ if [ -z "$(eval echo \$$cmd)" ];then echo "[FATAL] missing cmd:$cmd";exit 1;fi
+done
+testPipe="$(shPipeInit)"
+shPipeOpen $testPipe
+
+shLog $shLog_INFO "testPipe:$testPipe" >&2
+
+$cmdPrintf "testPipe:$testPipe" | shPipeWrite $testPipe
+
+shPipeTest() {
+ local shLogfunc="shPipeTest()"
+ shLog $shLog_INFO "$shLogfunc" >&2
+ testPipe2="$(shPipeInit)"
+ shPipeOpen $testPipe2
+ testPipe3="$(shPipeInit)"
+ 
+ shLog $shLog_TRACE "$shLogfunc write low level $testPipe $testPipe2 $testPipe3" >&2
+ shPipeRead $testPipe
+ $cmdPrintf "testPipe:$testPipe" | shPipeWrite $testPipe2 none
+ $cmdPrintf "testPipe2:$testPipe2" | shPipeWrite $testPipe2 none
+ $cmdPrintf "testPipe3:$testPipe3" | shPipeWrite $testPipe2
+ shPipeRead $testPipe2
+# shLog $shLog_TRACE "$shLogfunc write $testPipe" >&2
+# $cmdPrintf "coucou" | shPipeWrite $testPipe
+}

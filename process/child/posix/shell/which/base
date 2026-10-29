@@ -1,0 +1,78 @@
+#!/bin/sh
+# Copyright 2011-2026 Nicolas "DarkHack" Chapuis
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+cmdListBase="cmdSh cmdTput cmdDate"
+cmdSh="$(which sh)"
+cmdTput="$(which tput)"
+cmdDate="$(which date)"
+
+cmdListFlux="cmdEcho cmdPrintf cmdHead cmdTail cmdTr cmdCut cmdGrep cmdShuf cmdWc cmdXargs cmdOd cmdTee cmdSeq cmdRev"
+cmdListBase="$cmdListBase $cmdListFlux"
+cmdEcho="$(which echo)"
+cmdPrintf="$(which printf)"
+cmdHead="$(which head)"
+cmdTail="$(which tail)"
+cmdTr="$(which tr)"
+cmdCut="$(which cut)"
+cmdGrep="$(which grep)"
+cmdShuf="$(which shuf)"
+cmdWc="$(which wc)"
+cmdXargs="$(which xargs)"
+cmdOd="$(which od)"
+cmdTee="$(which tee)"
+cmdSeq="$(which seq)"
+cmdRev="$(which rev)"
+
+cmdOthers="cmdKill cmdSleep cmdDmidecode cmdWget cmdUptime cmdTimeout"
+cmdListBase="$cmdListBase $cmdOthers"
+cmdKill="$(which kill)"
+#cmdTrap="$(which trap)"
+cmdSleep="$(which sleep)"
+cmdDmidecode="$(which dmidecode)"
+cmdWget="$(which wget)"
+cmdUptime="$(which uptime)"
+cmdTimeout="$(which timeout)"
+
+cmdListEncode="cmdBase64 cmdMd5sum cmdOpenssl"
+cmdListBase="$cmdListBase $cmdListEncode"
+cmdBase64="$(which base64)"
+cmdMd5sum="$(which md5sum)"
+cmdOpenssl="$(which openssl)"
+
+cmdListFile="cmdCp cmdRm cmdCat cmdMkfifo"
+cmdListBase="$cmdListBase $cmdListFile"
+cmdCat="$(which cat)"
+cmdCp="$(which cp)"
+cmdRm="$(which rm)"
+cmdMkfifo="$(which mkfifo)"
+cmdLs="$(which ls)"
+cmdFind="$(which find)"
+
+cmdListDirectory="cmdMkdir cmdMount cmdUmount cmdMktemp"
+cmdListBase="$cmdListBase $cmdListDirectory"
+cmdMkdir="$(which mkdir)"
+cmdMount="$(which mount)"
+cmdUmount="$(which umount)"
+cmdMktemp="$(which mktemp)"
+
+cmdListUserRight="cmdChmod cmdChown cmdChgrp cmdGroupadd cmdUseradd cmdChroot"
+cmdListBase="$cmdListBase $cmdListUserRight"
+cmdChmod="$(which chmod)"
+cmdChown="$(which chown)"
+cmdChgrp="$(which chgrp)"
+cmdGroupadd="$(which groupadd)"
+cmdUseradd="$(which useradd)"
+cmdChroot="$(which chroot)"
+

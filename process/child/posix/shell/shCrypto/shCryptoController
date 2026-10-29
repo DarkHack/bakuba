@@ -1,0 +1,42 @@
+#!/bin/sh
+# Copyright 2011-2026 Nicolas "DarkHack" Chapuis
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+cmdList="cmdPrintf cmdTr cmdCat cmdTee"
+#cmdList="$cmdList cmdRm cmdMktemp cmdMkfifo"
+#cmdList="$cmdList cmdOpenssl"
+#
+shErrorOnMissing $cmdList
+
+# shCryptoControllerRequest $controller
+shCryptoControllerRequest() {
+ local controller="$1"
+ local shLogfunc="shCryptoControllerRequest $controller/$agarthaSessionKey"
+ shLog $shLog_TRACE "$shLogfunc" >&2
+
+ #shCryptoChannelWrite $agarthaSessionKey <&0 | httpRequest "$agarthaProto" "$agarthaHost" "$agarthaIpAddress" "$agarthaPort" "$controller" |\
+ # $cmdTee /tmp/shCryptoControllerRequest.log | shCryptoChannelTry $agarthaSessionKey | $cmdTr -d ' \n'
+ #
+ 
+ local dataRequest="$( shCryptoChannelWrite $agarthaSessionKey <&0 )"
+ $cmdPrintf "$dataRequest" | httpRequest "$agarthaProto" "$agarthaHost" "$agarthaIpAddress" "$agarthaPort" "$controller" |\
+  $cmdTee /tmp/shCryptoControllerRequest.log | shCryptoChannelTry $agarthaSessionKey | $cmdTr -d ' \n'
+
+# ( shCryptoChannelWrite $agarthaSessionKey <&0  ) | httpRequest "$agarthaProto" "$agarthaHost" "$agarthaIpAddress" "$agarthaPort" "$controller" |\
+#  $cmdTee /tmp/shCryptoControllerRequest.log | shCryptoChannelTry $agarthaSessionKey | $cmdTr -d ' \n'
+# (
+#  local shCryptoControllerData=$($cmdCat <&0);
+#  shLog $shLog_INFO "$shLogfunc receive( $($cmdPrintf $shCryptoControllerData | $cmdWc -c) )" >&2
+#  $cmdPrintf $shCryptoControllerData | shCryptoChannelTry $agarthaSessionKey | $cmdTr -d ' \n'
+# )
+}

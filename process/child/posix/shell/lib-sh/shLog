@@ -1,0 +1,125 @@
+#!/bin/sh
+# Copyright 2011-2026 Nicolas "DarkHack" Chapuis
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+cmdList="cmdSh cmdTput cmdDate cmdEcho cmdPrintf"
+
+for cmd in $($cmdPrintf "$cmdList" | tr ' ' '\n');do
+ if [ -z "$(eval $cmdPrintf \"\$$cmd\")" ];then $cmdPrintf "[FATAL] missing cmd:$cmd\r\n";exit 1;fi
+done
+shTotalLog=""
+
+# order : ERROR, WARNING, INFO, DEBUG, TRACE
+if [ -z "$shLog_init" ];then
+ readonly shLog_init=1
+ readonly shLog_NONE=0
+ readonly shLog_ERROR=1 # 1/red
+ readonly shLog_WARNING=3 # 3/orange
+ readonly shLog_INFO=4 # 4/blue
+ readonly shLog_DEBUG=2 # 2/green
+ readonly shLog_TRACE=5 # 5/magenta
+ 
+ export TERMINFO=/usr/share/terminfo
+ readonly shLog_REDStart="$($cmdTput -T xterm setaf 1 2>/dev/null )" # ERROR
+ readonly shLog_GREENStart="$($cmdTput -T xterm setaf 2 2>/dev/null )" # DEBUG
+ readonly shLog_ORANGEStart="$($cmdTput -T xterm setaf 3 2>/dev/null )" # WARNING
+ readonly shLog_BLUEStart="$($cmdTput -T xterm setaf 4 2>/dev/null )" # INFO
+ readonly shLog_MAGENTAStart="$($cmdTput -T xterm setaf 5 2>/dev/null )" # TRACE
+ readonly shLog_CYANStart="$($cmdTput -T xterm setaf 6 2>/dev/null )" # xxxx
+ readonly shLog_WHITEStart="$($cmdTput -T xterm setaf 7 2>/dev/null )" # xxxx
+ readonly shLog_COLORStop="$($cmdTput -T xterm sgr0 2>/dev/null )"
+fi
+# shLog shLog_DEBUG "debug message"
+# shLog shLog_INFO "info message"
+shLog() {
+ local params=""
+ local cptParam=0
+ local shMessage=""
+ local colorStart=""
+ local colorStop=""
+ for param in $*;do
+  cptParam=$(( cptParam + 1 ))
+  # is the first param and is numerical  ?
+  if [ $cptParam -eq 1 ] && [ "$param" -eq "$param" ] 2>/dev/null ;then
+   local colorStop="$shLog_COLORStop"
+   
+   case $param in
+    $shLog_NONE )
+		local shTitle="NONE"
+		local colorStart="$shLog_CYANStart"
+		;;
+   	$shLog_ERROR )
+   		local shTitle="ERREUR"
+		local colorStart="$shLog_REDStart"
+   		;;
+   	$shLog_WARNING )
+		local shTitle="WARNING"
+		local colorStart="$shLog_ORANGEStart"
+   		;;
+   	$shLog_INFO )
+		local shTitle="INFO"
+		local colorStart="$shLog_BLUEStart"
+   		;;
+   	$shLog_DEBUG )
+		local shTitle="DEBUG"
+		local colorStart="$shLog_GREENStart"
+   		;;
+   	$shLog_TRACE )
+		local shTitle="TRACE"
+		local colorStart="$shLog_MAGENTAStart"
+   		;;
+   	* )
+		local shTitle="UNKNOW"
+		local colorStart="$shLog_WHITEStart"
+		local params="$params $param"
+   		;;
+   esac
+  else local params="$params $param";fi
+ done
+ if [ -n "$shTitle" ];then 
+  if [ -n "$colorStart" ] && [ -n "$colorStop" ];then 
+   local shMessage="[${colorStart}$($cmdPrintf %-7s $shTitle )$($cmdDate "+%Y/%m/%d %H:%M:%S")${colorStop}]${colorStart}$params${colorStop}";
+  else
+   local shMessage="[$($cmdPrintf %-7s $shTitle )$($cmdDate "+%Y/%m/%d %H:%M:%S")]$params";
+  fi
+ else
+  local shMessage="$params"
+ fi
+ #$cmdPrintf "${colorStop}${shMessage}\n"
+ $cmdPrintf "${shMessage}\n"
+ #shTotalLog="$shTotalLog;$(date "+%Y/%m/%d %H:%M:%S") [$shLog] $params"
+ #if [ ! -z ""$shDebugEnable"" ]; then
+ # [ -f ""$shDebugHiddenMemory"" ] && cat "$shDebugHiddenMemory" && rm "$shDebugHiddenMemory"
+ # echo ""$(date "+%Y/%m/%d %H:%M:%S")" ($$)$shLog$params"
+ #fi
+}
+shErrorOnMissing() {
+ for param in $*;do
+  local params="$params $param"
+ done
+ local shLogfunc="shErrorOnMissing"
+# shLog $shLog_TRACE "$shLogfunc" >&2
+ for myParam in $(echo $params | tr ' ' '\n');do
+  if [ -z "$(eval echo \$$myParam)" ];then shLog $shLog_ERROR "$shLogfunc missing :$myParam";exit 1;fi
+#  else shLog $shLog_TRACE "$shLogfunc $myParam: $(eval echo \$$myParam | cut -c1-15)" >&2;fi
+ done
+}
+shWarnOnMissing() {
+ for param in $*;do
+  local params="$params $param"
+ done
+ local shLogfunc="shWarnOnMissing"
+ for myParam in $(echo $params | tr ' ' '\n');do
+  if [ -n "$(eval echo \$$myParam)" ];then shLog $shLog_TRACE "$shLogfunc $myParam:\t\t$(eval echo \$$myParam | cut -c1-15)" >&2;fi
+ done
+}

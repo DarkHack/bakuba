@@ -1,0 +1,342 @@
+#!/bin/sh
+# Copyright 2011-2026 Nicolas "DarkHack" Chapuis
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+#. $racine/lib-sh/shTools
+
+#|-------------------------------------------------------------|
+#| which "base" tools		: cp | rm | echo | head | tail |
+#|-------------------------------------------------------------|
+# &&&&&
+#|-----------------------------------------------------------------------|
+#| which "directory" tools	: mkdir | chmod | chgrp | mount | umount |
+#|-----------------------------------------------------------------------|
+# &&&&&
+#|------------------------------------------------------------------------------------|
+#| which "user right" tools	: chmod | chown | chgrp | groupadd | useradd | chroot |
+#|------------------------------------------------------------------------------------|
+$(shInclude $racine/which/lib-sh/base) && $(shInclude $racine/which/lib-sh/systemctl) && $(shInclude $racine/which/lib-sh/userRight)
+cmdStartStopDaemon="$(which start-stop-daemon)"
+cmdSh="$(which sh)"
+ 
+#systemctl_create $pName
+systemctl_create() {
+ local log="systemctl_create:"
+ local pName="$1"
+ if [ -z "$cmdSystemctl" ];then
+  initv_create "$pName"
+ else
+  if [ -n "$($cmdSystemctl status ${pName}* | head -n 3 | tail -n 1 | grep running)" ];then
+   shDebug 1 ""$log" service $pName is running, we stop them."
+   $cmdSystemctl stop $pName
+   $cmdSystemctl stop ${pName}@*
+  fi
+ fi
+}
+#initv_create $pName
+initv_create() {
+ local log="initv_create:"
+ local pName="$1"
+ shDebug 1 ""$log" not systemctl system, gone to initV"
+ /etc/init.d/$pName stop
+}
+ 
+#pServiceDoc="man:dhcpd(8)"
+#systemctl_install $pName $pServiceInfo $pServiceDoc $pUser $pGroup $pChrootDir $pMountFolders $pDirUserGroupRight $ExecStart $ExecStartPre $ExecStop $ExecReload
+#systemctl_install $pName $pServiceInfo $pServiceDoc $pUser $pGroup $pChrootDir $pMountFolders $pDirUserGroupRight "$cmdDhcpd -- -cf /etc/darksrv/dhcp/data/dhcpd.conf -lf /var/run/dhcp/dhcpd.leases" "$cmdTouch $pChrootDir/var/run/dhcp/dhcpd.leases" 
+#systemctl_install $pName $pServiceInfo $pServiceDoc $pUser $pGroup $pChrootDir $pMountFolders $pDirUserGroupRight "$cmdNamed -- -f -u bind" "" "$cmdRndc stop > /dev/null 2>&1 || $cmdKill -TERM \$MAINPID" "$cmdRndc reload > /dev/null 2>&1 || $cmdKill -HUP \$MAINPID"
+#systemctl_install $pName $pServiceInfo $pServiceDoc $pUser $pGroup $pChrootDir $pMountFolders $pDirUserGroupRight "$cmdNamed -- -f -u bind -t $pChrootDir" "" "$cmdRndc stop > /dev/null 2>&1 || $cmdKill -TERM \$MAINPID" "$cmdRndc reload > /dev/null 2>&1 || $cmdKill -HUP \$MAINPID"
+#systemctl_install $pName $pServiceInfo $pServiceDoc $pUser $pGroup $pChrootDir $pMountFolders $pDirUserGroupRight "$cmdChroot -- $pDir $cmdNamed -4 -f -u bind" "" "$cmdRndc stop > /dev/null 2>&1 || $cmdKill -TERM \$MAINPID" "$cmdRndc reload > /dev/null 2>&1 || $cmdKill -HUP \$MAINPID"
+systemctl_install () {
+ local log="systemctl_install"
+ local pName="$1"
+ local pServiceInfo="$2"
+ local pServiceDoc="$3"
+ local pUser="$4"
+ local pGroup="$5"
+ local pChrootDir="$6"
+ local pMountFolders="$7"
+ local pDirUserGroupRight="$8"
+ local ExecStart="$9"
+ local ExecStartPre="${10}"
+ local ExecStop="${11}"
+ local ExecReload="${12}"
+ local PidFile="${13}"
+ local serviceType="${14}"
+ if [ -z "$cmdSystemctl" ];then
+  shDebug 1 ""$log" not systemctl system, gone to initV"
+  initv_install "$pName" "$pServiceInfo" "$pServiceDoc" "$pUser" "$pGroup" "$pChrootDir" "$pMountFolders" "$pDirUserGroupRight" "$ExecStart" "$ExecStartPre" "$ExecStop" "$ExecReload" "$PidFile"
+ else
+  local serviceFile="/etc/systemd/system/${pName}.service"
+  if [ -n "$(echo $ExecStart | grep %i)" ];then local serviceFile="/etc/systemd/system/${pName}@.service";fi
+  
+  systemctl_unit_gen "$pName" "$pServiceInfo" "$pServiceDoc" > $serviceFile
+  systemctl_service_gen "$pName" "$pUser" "$pGroup" "$pChrootDir" "$pMountFolders" "$pDirUserGroupRight" \
+"$ExecStart" "$ExecStartPre" "$ExecStop" "$ExecReload" "$PidFile" "$serviceType" >> $serviceFile
+  
+  $cmdPrintf "											\n\
+[Install]											\n\
+WantedBy=multi-user.target									\n\
+" >> $serviceFile
+  $cmdSystemctl daemon-reload
+  $cmdSystemctl enable ${pName}
+  $cmdSystemctl restart ${pName}
+  $cmdSystemctl status ${pName}
+ fi
+}
+initv_install () {
+ local log="initv_install"
+ local pName="$1"
+ local pServiceInfo="$2"
+ local pServiceDoc="$3"
+ local pUser="$4"
+ local pGroup="$5"
+ local pChrootDir="$6"
+ local pMountFolders="$7"
+ local pDirUserGroupRight="$8"
+ local ExecStart="$9"
+ local ExecStartPre="${10}"
+ local ExecStop="${11}"
+ local ExecReload="${12}"
+ local pIdFile="${13}"
+ 
+ shDebug 1 ""$log" not systemctl system, gone to initV"
+ initv_unit_gen "$pName" "$pServiceInfo" "$pServiceDoc" > /etc/init.d/${pName}
+ initv_service_gen "$pName" "$pUser" "$pGroup" "$pChrootDir" "$pMountFolders" "$pDirUserGroupRight" \
+"$ExecStart" "$ExecStartPre" "$ExecStop" "$ExecReload" "$pIdFile">> /etc/init.d/${pName}
+ chmod u+x /etc/init.d/${pName}
+ update-rc.d ${pName} defaults
+}
+
+#initv_unit_gen $pName $pServiceInfo $pServiceDoc
+initv_unit_gen() {
+ local pName="$1"
+ local pServiceInfo="$2"
+ local pServiceDoc="$3"
+ $cmdPrintf "#!/bin/sh -e									\n\
+												\n\
+### BEGIN INIT INFO										\n\
+# Provides:          $pName									\n\
+# Required-Start:    \$remote_fs								\n\
+# Required-Stop:     \$remote_fs								\n\
+# Should-Start:      \$network \$syslog								\n\
+# Should-Stop:       \$network \$syslog								\n\
+# Default-Start:     2 3 4 5									\n\
+# Default-Stop:      0 1 6									\n\
+# Short-Description: Start and stop $pName							\n\
+# Description:       $pServiceInfo								\n\
+### END INIT INFO										\n\
+												\n\
+. /lib/lsb/init-functions									\n\
+"
+}
+
+#systemctl_unit_gen $pName $pServiceInfo $pServiceDoc
+systemctl_unit_gen() {
+ local pName="$1"
+ local pServiceInfo="$2"
+ local pServiceDoc="$3"
+ $cmdPrintf "											\n\
+[Unit]												\n\
+Description=$pServiceInfo									\n\
+Documentation=$pServiceDoc									\n\
+"
+ if [ "$pName" = "dhcpd" ];then
+  $cmdPrintf "											\n\
+After=network-online.target									\n\
+"
+ elif [ "$pName" = "bind9" ];then
+  $cmdPrintf "											\n\
+Wants=nss-lookup.target										\n\
+Before=nss-lookup.target									\n\
+After=network.target										\n\
+"
+ fi
+}
+
+#initv_service_gen $pName $pUser $pGroup $pChrootDir $pMountFolders $pDirUserGroupRight $ExecStart $ExecStartPre $ExecStop $ExecReload $pIdFile
+initv_service_gen() {
+ local log="initv_service_gen"
+ local pName="$1"
+ local pUser="$2"
+ local pGroup="$3"
+ local pChrootDir="$4"
+ local pMountFolders="$5"
+ local pDirUserGroupRight="$6"
+ local ExecStart="$7"
+ local ExecStartPre="$8"
+ local ExecStop="$9"
+ local ExecReload="${10}"
+ local pIdFile="${11}"
+ if [ -z "$pIdFile" ];then pIdFile="$pChrootDir/var/run/$pName/$pName.pid";fi
+
+ local Type="Type=forking"
+ 
+ if [ -z "$ExecStop" ] || [ -z "$(echo $ExecStart | grep $pChrootDir)" ];then
+  local ExecStop="$cmdStartStopDaemon --pidfile \${pChrootDir}/\${pIdFile} --stop || echo \"echec stop service\""
+ fi
+ if [ -n "ExecStart" ] && [ -z "$(echo $ExecStart | grep $pChrootDir)" ];then
+  local ExecStart="$cmdStartStopDaemon --chroot $pChrootDir --pidfile \${pChrootDir}/\${pIdFile} --start --exec $ExecStart"
+ fi
+ if [ -n "$ExecReload" ];then
+  local ExecReload="ExecReload=$ExecReload"
+ fi
+ local systemdExecStartPre="$(chroot_gen_start "$pChrootDir" "$pUser" "$pGroup" "$pMountFolders")"
+ local systemdExecStopPost="$(chroot_gen_stop "$pChrootDir" "$pMountFolders")"
+ $cmdPrintf "										\n\
+pChrootDir=\"$pChrootDir\"								\n\
+pIdFile=\"$pIdFile\"									\n\
+pIdFolder=\"\$(echo \$pIdFile | rev | cut -d/ -f2- | rev)\"				\n\
+if [ ! -d \"\$pIdFolder\" ];then mkdir -p \"\$pIdFolder\";fi				\n\
+case \"\$1\" in										\n\
+    start)										\n\
+	log_daemon_msg \"Starting service...\" \"$pName\"				\n\
+											\n\
+	$cmdSh -c '$systemdExecStartPre'						\n\
+	$racine/chroot/bin/dirfileright '$pChrootDir' '$pDirUserGroupRight'		\n\
+	$ExecStart									\n\
+	log_end_msg 0									\n\
+    ;;											\n\
+											\n\
+    stop)										\n\
+	log_daemon_msg \"Stopping service...\" \"$pName\"				\n\
+	$ExecStop									\n\
+	$cmdSh -c '$systemdExecStopPost'						\n\
+	log_end_msg 0									\n\
+    ;;											\n\
+											\n\
+    reload|force-reload)								\n\
+	log_daemon_msg \"Reloading service...\" \"$pName\"				\n\
+	$ExecReload >/dev/null && log_end_msg 0 || log_end_msg 1			\n\
+    ;;											\n\
+											\n\
+    restart)										\n\
+	\$0 stop || log_daemon_msg \"Stopping service echec\" \"$pName\"		\n\
+	\$0 start									\n\
+    ;;											\n\
+    											\n\
+    status)										\n\
+	ret=0										\n\
+	status_of_proc -p \${pChrootDir}/\${pIdFile} $pName 2>/dev/null || ret=\$?	\n\
+	exit \$ret									\n\
+	;;										\n\
+											\n\
+    *)											\n\
+	log_action_msg \"Usage: \$0 {start|stop|reload|restart|force-reload|status}\"	\n\
+	exit 1										\n\
+    ;;											\n\
+esac											\n\
+"
+}
+#systemctl_service_gen $pName $pUser $pGroup $pChrootDir $pMountFolders $pDirUserGroupRight $ExecStart $ExecStartPre $ExecStop $ExecReload $pidFile
+systemctl_service_gen() {
+ local log="systemctl_install"
+ local pName="$1"
+ local pUser="$2"
+ local pGroup="$3"
+ local pChrootDir="$4"
+ local pMountFolders="$5"
+ local pDirUserGroupRight="$6"
+ local ExecStart="$7"
+ local ExecStartPre="$8"
+ local ExecStop="$9"
+ local ExecReload="${10}"
+ local pidFile="${11:-$pChrootDir/var/run/$pName/$pName.pid}"
+ local Type="${12:-forking}"
+ #local startStopParamPidFils=""
+ if [ "$pName" = "bind9" ];then
+#  local pidFile="$pChrootDir/var/run/named/named.pid"
+  local Type="simple"
+ fi
+ if [ -z "$ExecStop" ];then
+  if [ -z "$(echo $ExecStart | grep $pChrootDir)" ];then
+   local ExecStop="ExecStop=$cmdStartStopDaemon --stop --pid \$MAINPID -p $pidFile"
+  else
+   local ExecStop=""
+  fi
+ else
+  local ExecStop="ExecStop=$ExecStop"
+ fi
+ if [ -n "$ExecStartPre" ];then
+  local ExecStartPre="ExecStartPre=$ExecStartPre"
+ fi
+ if [ -n "ExecStart" ];then
+  if [ -z "$(echo $ExecStart | grep $pChrootDir)" ];then
+   local ExecStart="ExecStart=$cmdStartStopDaemon -p $pidFile --chroot $pChrootDir --start --exec $ExecStart"
+  else
+   local ExecStart="ExecStart=$ExecStart"
+  fi
+ fi
+ if [ -n "$ExecReload" ];then
+  local ExecReload="ExecReload=$ExecReload"
+ fi
+ local systemdExecStartPre="$(chroot_gen_start "$pChrootDir" "$pUser" "$pGroup" "$pMountFolders")"
+ local systemdExecStopPost="$(chroot_gen_stop "$pChrootDir" "$pMountFolders")"
+$cmdPrintf "											\n\
+[Service]											\n\
+Type=$Type											\n\
+PIDFile=$pChrootDir/$pidFile									\n\
+ExecStartPre=$cmdSh -c '$systemdExecStartPre'							\n\
+$ExecStartPre											\n\
+ExecStartPre=$racine/chroot/bin/dirfileright '$pChrootDir' '$pDirUserGroupRight'		\n\
+$ExecStart											\n\
+$ExecReload											\n\
+$ExecStop											\n\
+												\n\
+ExecStopPost=$cmdSh -c '$systemdExecStopPost'							\n\
+												\n\
+PrivateTmp=false										\n\
+												\n\
+"
+}
+
+# systemctl_install_debug "$debugFile" "$pName" "$pChrootDir" "$pUser" "$pGroup" "$ExecStart" "$pMountFolders" "$pDirUserGroupRight"
+systemctl_install_debug() {
+ local log="systemctl_install_debug"
+ local debugFile="$1"
+ local pName="$2"
+ local pChrootDir="$3"
+ local pUser="$4"
+ local pGroup="$5"
+ local ExecStart="$6"
+ local pMountFolders="$7"
+ local pDirUserGroupRight="$8"
+ 
+ $cmdPrintf "#!/bin/sh									\n\
+racine=\"/etc/darksrv\"									\n\
+											\n\
+											\n\
+. \$racine/lib-sh/shTools								\n\
+\$(shInclude \$racine/chroot/lib-sh/chroot) 						\n\
+" > "$debugFile"
+for myParams in bash ls ldd gdb strace ldconfig ldconfig.real;do
+ $cmdPrintf "cmd=\"\$(which $myParams)\"						\n\
+if [ -n \"\$cmd\" ];then chroot_install \"$pChrootDir\" \"\$cmd\"	;fi		\n\
+" >> "$debugFile"
+done
+$cmdPrintf "if [ -n \"$cmdSystemctl\" ];then						\n\
+ $cmdSystemctl stop "$pName"								\n\
+else											\n\
+ /etc/init.d/$pName stop								\n\
+fi											\n\
+" >> "$debugFile"
+ $cmdChmod u+x "$debugFile"
+#chroot_gen_start "$pChrootDir" "$pUser" "$pGroup" "$pMountFolders"
+ chroot_gen_start "$pChrootDir" "$pUser" "$pGroup" "$pMountFolders" >> "$debugFile"
+ $cmdPrintf "$racine/chroot/bin/dirfileright \"$pChrootDir\" \"$pDirUserGroupRight\"" >> "$debugFile"
+ $cmdPrintf "$cmdPrintf \"ldconfig -f /etc/ld.so.conf -C /etc/ld.so.cache\"" >> "$debugFile"
+ $cmdPrintf "$cmdPrintf \"$ExecStart\"" >> "$debugFile"
+ $cmdPrintf "$cmdChroot --userspec=root:root $pChrootDir" >> "$debugFile"
+ chroot_gen_stop "$pChrootDir" "$pMountFolders" >> "$debugFile"
+}

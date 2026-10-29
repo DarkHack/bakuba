@@ -1,0 +1,232 @@
+#!/bin/sh
+# Copyright 2011-2026 Nicolas "DarkHack" Chapuis
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#shCryptoChannel="1"
+shCryptoChannel=""
+cmdList="cmdSh cmdTr cmdWget cmdBase64 cmdEcho cmdPrintf"
+cmdList="$cmdList cmdRm cmdMktemp cmdMkfifo"
+cmdList="$cmdList cmdOpenssl"
+
+shErrorOnMissing $cmdList
+
+shCryptoChannelPipe=$(shPipeInit 2>/dev/null)
+shPipeOpen $shCryptoChannelPipe 2>/dev/null
+
+$cmdPrintf ""  | shPipeWrite $shCryptoChannelPipe 2>/dev/null
+
+# sessionKey=$($cmdPrintf "$jsonMessage" | shCryptoChannelInit)
+
+[ "$shCryptoChannel" ] && shLog $shLog_TRACE "shCryptoChannel mineCiphers/mineDigests" >&2
+mineCiphers=$shCryptciphers;
+#mineCiphers="$(shCryptTestListCiphers)";
+mineDigests=$shCryptdigests;
+
+# echo "{ ciphers : [ "cipher A", "cipher B", "cipher C" ],"
+shCryptoChannelInit() {
+ local shLogfunc="shCryptoChannelInit()"
+ [ "$shCryptoChannel" ] && shLog $shLog_TRACE "$shLogfunc" >&2
+ local jsonMessageInit="$($cmdCat <&0)";
+ if [ -z "$jsonMessageInit" ];then
+  [ "$shCryptoChannel" ] && shLog $shLog_ERROR "$shLogfunc no init in :\n$jsonMessageInit" >&2
+ else
+  ciphersCommon="$(shCryptListUnionCommon "$mineCiphers" "$($cmdPrintf "$jsonMessageInit" | jsonInObjectRead $shCryptJsonCiphers )")"
+  if [ -z "$ciphersCommon" ];then
+   [ "$shCryptoChannel" ] && shLog $shLog_ERROR "$shLogfunc: no one common cipher.\n$ciphersCommon" >&2
+  else 
+   [ "$shCryptoChannel" ] && shLog $shLog_TRACE "$shLogfunc: ciphers $(shCryptListCount $ciphersCommon)\n$ciphersCommon" >&2
+   digestsCommon="$(shCryptListUnionCommon "$mineDigests" "$($cmdPrintf "$jsonMessageInit" | jsonInObjectRead $shCryptJsonDigests )")"
+   if [ -z "$digestsCommon" ];then
+    [ "$shCryptoChannel" ] && shLog $shLog_ERROR "$shLogfunc: no one common digest.\n$digestsCommon" >&2
+   else 
+    [ "$shCryptoChannel" ] && shLog $shLog_TRACE "$shLogfunc: digests $(shCryptListCount $digestsCommon)\n$digestsCommon" >&2
+    local newSessionKey="$(shCryptoChannelSessionInit)"
+    $cmdPrintf "{}" | jsonInObjectWrite $shCryptJsonCiphers "$ciphersCommon" | jsonInObjectWrite $shCryptJsonDigests "$digestsCommon" |\
+     jsonInObjectWrite response64 $($cmdPrintf "$jsonMessageInit" | $cmdBase64 | $cmdTr -d ' \n') |\
+     jsonInObjectWrite nextMessage64 $(shCryptInitMessage "$ciphersCommon" "$digestsCommon" | jsonInObjectWrite $shCryptJsonCiphers "$ciphersCommon" | jsonInObjectWrite $shCryptJsonDigests "$digestsCommon" | $cmdBase64 | $cmdTr -d ' \n') |\
+     shCryptoChannelSessionSet $newSessionKey;
+    [ "$shCryptoChannel" ] && shLog $shLog_INFO "$shLogfunc:newSessionKey $newSessionKey" >&2
+    $cmdPrintf "$newSessionKey"
+   fi
+  fi
+ fi
+}
+shCryptoChannelSessionInit() {
+ local shLogfunc="shCryptoChannelSessionInit()"
+ local shCryptoChannelBuffer="$(shPipeRead $shCryptoChannelPipe | $cmdTr -d '\n' )"
+ local sessionKey="$($cmdPrintf "$shCryptoChannelBuffer" | $cmdWc -c)"
+ [ "$shCryptoChannel" ] && shLog $shLog_INFO "$shLogfunc:$sessionKey" >&2
+ $cmdPrintf "$shCryptoChannelBuffer|$sessionKey:" | shPipeWrite $shCryptoChannelPipe;
+ $cmdPrintf "$sessionKey"
+}
+shCryptoChannelSessionSet() {
+ local askKey="$1"
+ local found=""
+ local shLogfunc="shCryptoChannelSessionSet($1)"
+ [ "$shCryptoChannel" ] && shLog $shLog_TRACE "$shLogfunc askKey:$askKey" >&2
+ if [ -z "$askKey" ] || [ ! "$askKey" -eq "$askKey" ];then
+  [ "$shCryptoChannel" ] && shLog $shLog_ERROR "$shLogfunc:no sessionKey[$askKey]\n" >&2
+ else
+  local shCryptoChannelBuffer=""
+  local newSession="$($cmdCat <&0 | $cmdBase64 | $cmdTr -d ' \n' )"
+  for sessionKeyData in $(shPipeRead "$shCryptoChannelPipe" | $cmdTr -d '\n' | $cmdTr '|' '\n');do
+   local sessionKey="$($cmdPrintf "$sessionKeyData" | $cmdCut -f1 -d':')"
+   if [ "$sessionKey"="$askKey" ];then
+    local shCryptoChannelBuffer="$shCryptoChannelBuffer|$askKey:$newSession"
+    found="1"
+   else
+    local shCryptoChannelBuffer="$shCryptoChannelBuffer|$sessionKeyData"
+   fi
+  done
+  if [ -z "$found" ];then
+   [ "$shCryptoChannel" ] && shLog $shLog_WARNING "$shLogfunc:write new session key $askKey" >&2
+   local shCryptoChannelBuffer="$askKey:$newSession|$shCryptoChannelBuffer"
+  fi
+  $cmdPrintf "$shCryptoChannelBuffer" | shPipeWrite $shCryptoChannelPipe
+ fi
+}
+shCryptoChannelSessionGet() {
+ local askKey="$1"
+ local shLogfunc="shCryptoChannelSessionGet($1)"
+ [ "$shCryptoChannel" ] && shLog $shLog_TRACE "$shLogfunc" >&2
+ if [ -z "$askKey" ] || [ ! "$askKey" -eq "$askKey" ];then
+  [ "$shCryptoChannel" ] && shLog $shLog_ERROR "$shLogfunc:no sessionKey[$askKey]\n" >&2
+ else
+  local shCryptoChannelBuffer="$(shPipeRead $shCryptoChannelPipe | $cmdTr -d '\n')"
+  local notfound=""
+  for sessionKeyData in $($cmdPrintf "$shCryptoChannelBuffer" | $cmdTr '|' '\n');do
+   local sessionKey="$($cmdPrintf "$sessionKeyData" | $cmdCut -f1 -d':')"
+   if [ "$sessionKey"="$askKey" ];then
+    local notfound="1"
+    $cmdPrintf "$sessionKeyData" | $cmdCut -f2- -d':' | $cmdBase64 -d | $cmdTr -d ' \n'
+   fi
+  done
+  if [ -z "$notfound" ];then 
+   [ "$shCryptoChannel" ] && shLog $shLog_ERROR "$shLogfunc:sessionKey[$askKey] not found\n" >&2
+  fi
+  $cmdPrintf "$shCryptoChannelBuffer" | shPipeWrite $shCryptoChannelPipe
+ fi
+}
+shCryptoChannelWrite() {
+ local sessionKey="$1"
+ local shLogfunc="shCryptoChannelWrite($1)"
+ [ "$shCryptoChannel" ] && shLog $shLog_TRACE "$shLogfunc" >&2
+ local jsonSession="$(shCryptoChannelSessionGet $sessionKey)"
+ local jsonResponse="$($cmdPrintf "$jsonSession" | jsonInObjectRead response64 | base64 -d -i)"
+ local nextMessage64="$($cmdPrintf "$jsonSession" | jsonInObjectRead nextMessage64 )"
+ [ "$shCryptoChannel" ] && shLog $shLog_INFO "$shLogfunc:jsonResponse\n$jsonResponse" >&2
+
+ $cmdPrintf "$jsonSession" | jsonInObjectWrite "message64" "$nextMessage64" | shCryptoChannelSessionSet $sessionKey;
+ 
+ local data64="$($cmdCat <&0 | $cmdBase64 | $cmdTr -d '\n' )";
+
+ local message64="$($cmdPrintf "$nextMessage64" | $cmdBase64 -d -i | jsonInObjectWrite "data" "$data64" | $cmdBase64 | $cmdTr -d ' \n')";
+ $cmdPrintf "$jsonResponse" | jsonInObjectWrite "data" "$message64" | shCryptEncode
+}
+shCryptoChannelRead() {
+ local sessionKey="$1"
+ local shLogfunc="shCryptoChannelRead($1)"
+ [ "$shCryptoChannel" ] && shLog $shLog_TRACE "$shLogfunc" >&2
+
+ if [ -z "$sessionKey" ] || [ ! "$sessionKey" -eq "$sessionKey" ];then
+  [ "$shCryptoChannel" ] && shLog $shLog_ERROR "$shLogfunc: session key empty." >&2
+ else
+  local jsonSession="$(shCryptoChannelSessionGet $sessionKey)"
+  if [ -z "$jsonSession" ];then 
+   [ "$shCryptoChannel" ] && shLog $shLog_ERROR "$shLogfunc: session empty:\n$jsonSession" >&2
+  else
+   local ciphers="$($cmdPrintf "$jsonSession" | jsonInObjectRead $shCryptJsonCiphers)"
+   local digests="$($cmdPrintf "$jsonSession" | jsonInObjectRead $shCryptJsonDigests)"
+   [ "$shCryptoChannel" ] && shLog $shLog_INFO "$shLogfunc:ciphers\n$ciphers" >&2
+   local jsonResponse="$($cmdCat <&0)"
+   if [ -z "$jsonResponse" ];then 
+    [ "$shCryptoChannel" ] && shLog $shLog_ERROR "$shLogfunc empty jsonResponse:$jsonResponse" >&2
+   else
+    $cmdPrintf "$jsonResponse" | jsonInObjectRead data
+    [ "$shCryptoChannel" ] && shLog $shLog_TRACE "$shLogfunc write new nextMessage64 and record response64 in session" >&2
+    $cmdPrintf "$jsonSession" |\
+     jsonInObjectWrite response64 $($cmdPrintf "$jsonResponse" | $cmdBase64 | $cmdTr -d ' \n') |\
+     jsonInObjectWrite nextMessage64 $(shCryptInitMessage "$ciphers" "$digests" | $cmdBase64 | $cmdTr -d ' \n') |\
+     jsonInObjectWrite data $($cmdPrintf "$jsonResponse" | jsonInObjectRead data) |\
+    shCryptoChannelSessionSet $sessionKey;
+   fi
+  fi
+ fi
+}
+shCryptoChannelTry() {
+ local sessionKey="$1"
+ local shLogfunc="shCryptoChannelTry($1)"
+ [ "$shCryptoChannel" ] && shLog $shLog_TRACE "$shLogfunc" >&2
+ if [ -z "$sessionKey" ] || [ ! "$sessionKey" -eq "$sessionKey" ];then
+  [ "$shCryptoChannel" ] && shLog $shLog_ERROR "$shLogfunc: session key empty." >&2
+ else
+ [ "$shCryptoChannel" ] && shLog $shLog_TRACE "$shLogfunc shCryptoChannelSessionGet" >&2
+  local jsonSession="$(shCryptoChannelSessionGet $sessionKey)"
+  if [ -z "$jsonSession" ];then 
+   [ "$shCryptoChannel" ] && shLog $shLog_ERROR "$shLogfunc: session empty:\n$jsonSession" >&2
+  else
+   #[ "$shCryptoChannel" ] && shLog $shLog_TRACE "$shLogfunc:jsonSession\n$jsonSession" >&2
+   local jsonMessage="$($cmdPrintf "$jsonSession" | jsonInObjectRead message64 | $cmdBase64 -d -i)"
+   if [ -z "$jsonMessage" ];then 
+    [ "$shCryptoChannel" ] && shLog $shLog_ERROR "$shLogfunc:no message in session:\n$jsonMessage" >&2
+   else
+    #[ "$shCryptoChannel" ] && shLog $shLog_TRACE "$shLogfunc:jsonMessage\n$jsonMessage" >&2
+    #$cmdPrintf "$jsonMessage" | jsonInObjectWrite data $($cmdCat <&0) | shCryptDecode | $cmdBase64 -d -i | $cmdTr -d ' \n' | shCryptoChannelRead $sessionKey
+    local dataCrypted="$($cmdCat <&0)"
+    if [ -z "$dataCrypted" ];then
+     [ "$shCryptoChannel" ] && shLog $shLog_ERROR "$shLogfunc:no data[$dataCrypted]\n" >&2
+    else
+     local jsonRead="$($cmdPrintf "$jsonMessage" | jsonInObjectWrite data $dataCrypted | shCryptDecode | $cmdBase64 -d -i | $cmdTr -d ' \n')"
+     [ "$shCryptoChannel" ] && shLog $shLog_TRACE "$shLogfunc:decode\n$jsonRead" >&2
+     if [ -z "$jsonRead" ];then
+      [ "$shCryptoChannel" ] && shLog $shLog_ERROR "$shLogfunc:echec decode empty:\n$jsonRead" >&2
+     else
+      $cmdPrintf "$jsonRead" | shCryptoChannelRead $sessionKey
+     fi
+    fi
+   fi
+  fi
+ fi
+ #$cmdPrintf "coucou"
+}
+
+shCryptoChannelInitB() {
+ local b64CryptoSession=""
+ while read anData; do
+  local b64CryptoSession="${anData}${b64CryptoSession}"
+ done
+# jsonCryptoSession=$($cmdPrintf "$b64CryptoSession" | $cmdBase64 -d -i 2>/dev/null);
+ local jsonCryptoSession=$($cmdPrintf "$b64CryptoSession" | $cmdBase64 -d -i 2>/dev/null);
+ $cmdPrintf "$jsonCryptoSession" | shCryptWritePipe $shCryptoChannelPipe
+# $cmdPrintf "\\\n" | shCryptWritePipe $shCryptoChannelPipe
+ $cmdPrintf "jsonCryptoSession $shCryptoChannelPipe ==================================================================================== $b64CryptoSession"
+ $cmdPrintf "shCryptoChannelInitB:$jsonCryptoSession"
+ $cmdPrintf "$jsonCryptoSession"
+ $cmdPrintf "\\\n"
+}
+shCryptoChannelAsk() {
+ local clearMessage=""
+ while read anData; do
+  local clearMessage="${anData}${b64CryptoSession}"
+ done
+ $cmdPrintf "ask : $clearMessage $shCryptoChannelPipe ===================================================================================="
+ #
+ jsonData="$(shCryptReadPipe $shCryptoChannelPipe)"
+ $cmdPrintf "jsonData :\r\n$jsonData"
+ $cmdPrintf "$jsonData" | json_sh -l
+# local keySession="$(echo $jsonData | jsonInObjectRead keySession)"
+# local firstMessage="$(echo $jsonData | jsonInObjectRead firstMessage)"
+# local ciphers="$(echo $jsonData | jsonInObjectRead ciphers)"
+ #keySession="$(shRandomizeASCCI 1000)"
+
+}

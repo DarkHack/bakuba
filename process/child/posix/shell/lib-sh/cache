@@ -1,0 +1,133 @@
+#!/bin/sh
+# Copyright 2011-2026 Nicolas "DarkHack" Chapuis
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#racine="/etc/darksrv"
+#. $racine/lib-sh/shTools
+#shLog="server ddns:"
+#shDebugEnable="1"
+
+$(shInclude $racine/lib-sh/json)
+
+# cacheNewId "{ newId: string_id, data: id0:b64|id1:b64|idn:b64, ids: id0|id1|idN }"
+cacheNewId() {
+ local log="cacheNewId:"
+ 
+ local jsonData=""
+ while read data; do
+  local jsonData="${data}${jsonData}"
+ done
+ 
+# local data="$(echo "$jsonData" | jsonInObjectRead data)"
+ local ids="$(echo "$jsonData" | jsonInObjectRead ids)"
+ local newId=""
+ while [ -z "$newId" ];do
+  local newId="$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 13)"
+  if [ -n "$ids" ];then
+   for id in $(echo $ids | tr '|' ' ');do
+    if [ "$id" = "$newId" ];then local newId="";fi
+   done
+  fi
+ done
+ local jsonData="$(echo "$jsonData" | jsonInObjectWrite ids "$ids|$newId")"
+ local jsonData="$(echo "$jsonData" | jsonInObjectWrite newId "$newId")"
+# echo "$jsonData" | base64 | tr -d '\n' | tr -s '[:blank:]' '_'
+ echo "$jsonData"
+# | base64 | tr -d '\n' | tr -s '[:blank:]' '_'
+
+}
+# cacheGet id "{ newId: string_id, data: id0:b64|id1:b64|idn:b64, ids: id0|id1|idN }"
+cacheGet() {
+ local log="cacheGet:"
+ 
+ local idAsk="$1"
+ local jsonData=""
+ while read data; do
+  local jsonData="${data}${jsonData}"
+ done
+# local jsonData=""
+# local cptParam=0
+# for param in $*;do
+#  if [ $cptParam -gt 0 ];then
+#   local jsonData="$param $jsonData"
+#  fi
+#  local cptParam=$((cptParam + 1))
+# done
+
+ local data="$(echo "$jsonData" | jsonInObjectRead data)"
+# $(which echo) -e "data $data;\c"
+ for cacheIdData in $(echo $data | tr '|' ' ');do
+  local cacheId="$(echo $cacheIdData | cut -d: -f1)"
+  if [ "$cacheId" = "$idAsk" ];then
+   echo $cacheIdData | cut -d: -f2- | tr '_' ' ' | base64 --decode 2>&1
+   return 0
+  fi
+ done
+ local ids="$(echo "$jsonData" | jsonInObjectRead ids)"
+ for id in $(echo $ids | tr '|' ' ');do
+  if [ "$id" = "$idAsk" ];then
+   echo ""
+   return 0
+  fi
+ done
+ return 1
+}
+
+# cacheGet id data "{ newId: string_id, data: id0:b64|id1:b64|idn:b64, ids: id0|id1|idN }"
+cacheSet() {
+ local log="cacheSet:"
+ 
+ local idSet="$1"
+ local dataSet="$(echo $2 | base64 | tr -d '\n' | tr -s '[:blank:]' '_')"
+ local jsonData=""
+ while read data; do
+  local jsonData="${data}${jsonData}"
+ done
+# local jsonData=""
+# local cptParam=0
+# for param in $*;do
+#  if [ $cptParam -gt 1 ];then
+#   local jsonData="$param $jsonData"
+#  fi
+#  local cptParam=$((cptParam + 1))
+# done
+ 
+ local newData=""
+ local writed=0
+ local data="$(echo "$jsonData" | jsonInObjectRead data)"
+ for cacheIdData in $(echo $data | tr '|' ' ');do
+  local cacheId="$(echo $cacheIdData | cut -d: -f1)"
+  if [ "$cacheId" = "$idSet" ];then
+   local newData="${idSet}:$dataSet|$newData"
+   local writed=1
+  else
+   local newData="$cacheIdData|$newData"
+  fi
+ done
+ 
+ if [ "$writed" -eq 0 ];then
+  local ids="$(echo "$jsonData" | jsonInObjectRead ids)"
+  if [ -n "$ids" ];then
+   for id in $(echo $ids | tr '|' ' ');do
+    if [ "$id" = "$idSet" ];then local newData="${idSet}:$dataSet|$newData";local writed=1;fi
+   done
+  fi
+ fi
+ local jsonData="$(echo "$jsonData" | jsonInObjectWrite data "$newData")"
+ echo "$jsonData"
+ if [ "$writed" -eq 0 ];then
+  return 1
+ else
+  return 0
+ fi
+}

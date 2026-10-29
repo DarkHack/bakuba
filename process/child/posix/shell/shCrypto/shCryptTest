@@ -1,0 +1,145 @@
+#!/bin/sh
+# Copyright 2011-2026 Nicolas "DarkHack" Chapuis
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+shCryptTest="1"
+#shCryptTest=""
+cmdList="cmdSh cmdCat cmdTimeout cmdTr cmdXargs cmdCut cmdWget cmdBase64 cmdEcho cmdPrintf"
+cmdList="$cmdList cmdRm cmdMktemp cmdMkfifo"
+cmdList="$cmdList cmdOpenssl"
+
+shErrorOnMissing $cmdList >&2
+
+# shCryptListUnionCommon "ciphersA" "ciphersB"
+#
+shCryptTestListCiphers() {
+ local shLogfunc="shCryptTestListCiphers()"
+ [ "$shCryptTest" ] && shLog $shLog_TRACE "$shLogfunc" >&2
+ shCryptTestCiphers "$shCryptciphers"
+}
+shCryptTestCiphers() {
+ local shLogfunc="shCryptTestCiphers(init)"
+ local tCiphers="$1"
+ local ciphersSalt=""
+ local ciphersNoSalt=""
+ local ciphersIVSalt=""
+ local ciphersIVNoSalt=""
+ local ciphersReject=""
+ local testData="$(shRandomizeASCCI 1000)"
+ local testDigest="$(shCryptListGetAnRandom $shCryptdigests)"
+ for cipher in $($cmdPrintf $tCiphers | $cmdTr ':' '\n' );do
+  local cipherIvSize="$(shCryptCipherIvSize $cipher)"
+  local shLogfunc="shCryptTestCiphers($cipher/$cipherIvSize)"
+  local cipherAccept=0;
+  local jsonMessageInit="$(shCryptInitCipher $cipher $testDigest)"
+  local dataSize="$($cmdPrintf $testData | $cmdWc -c)"
+  local passSize="$($cmdPrintf $jsonMessageInit | jsonInObjectRead pass | $cmdWc -c)"
+  local saltSize="$($cmdPrintf $jsonMessageInit | jsonInObjectRead salt | $cmdWc -c)"
+  [ "$shCryptTest" ] && shLog $shLog_DEBUG "$shLogfunc:data($dataSize):pass($passSize):salt($saltSize)" >&2;
+
+  local jsonMessage="$($cmdPrintf $jsonMessageInit | jsonInObjectWrite data $testData )"
+ 
+  [ "$shCryptTest" ] && shLog $shLog_TRACE "$shLogfunc: test with salt" >&2
+  clearData="$($cmdPrintf $jsonMessage | shCryptTestCipher)"
+  #cryptData="$(shPipeRead $cryptCryptPipe)"
+  if [ "$clearData" = "$testData" ];then
+   local ciphersSalt="$cipher:$ciphersSalt";local cipherAccept=1;
+   [ "$shCryptTest" ] && shLog $shLog_INFO "$shLogfunc:accept $cipher with salt" >&2
+  fi
+  #[ "$shCryptTest" ] && shLog $shLog_DEBUG "$shLogfunc:clearData($($cmdPrintf $clearData | $cmdWc -c)):$clearData" >&2
+  #[ "$shCryptTest" ] && shLog $shLog_DEBUG "$shLogfunc:cryptData($($cmdPrintf $cryptData | $cmdWc -c)):$cryptData" >&2
+  [ "$shCryptTest" ] && shLog $shLog_TRACE "$shLogfunc: test without salt" >&2
+  local jsonMessage="$($cmdPrintf $jsonMessage | jsonInObjectWrite salt "" )"
+  clearData="$($cmdPrintf $jsonMessage | shCryptTestCipher $cipher)"
+  #cryptData="$(shPipeRead $cryptCryptPipe 2>/dev/null)"
+  if [ "$clearData" = "$testData" ];then
+   local ciphersNoSalt="$cipher:$ciphersNoSalt";local cipherAccept=1;
+   [ "$shCryptTest" ] && shLog $shLog_INFO "$shLogfunc:accept $cipher without salt" >&2
+  fi
+  #[ "$shCryptTest" ] && shLog $shLog_DEBUG "$shLogfunc:clearData($($cmdPrintf $clearData | $cmdWc -c)):$clearData" >&2
+  #[ "$shCryptTest" ] && shLog $shLog_DEBUG "$shLogfunc:cryptData($($cmdPrintf $cryptData | $cmdWc -c)):$cryptData" >&2
+  if [ $cipherAccept -eq 0 ];then
+   local ciphersReject="$cipher:$ciphersReject"
+   [ "$shCryptTest" ] && shLog $shLog_ERROR "$shLogfunc:reject $cipher with/without salt" >&2
+  fi
+  if [ $cipherIvSize -eq -1 ];then
+   [ "$shCryptTest" ] && shLog $shLog_WARNING "$shLogfunc: ! unknow size for iv !" >&2
+  else
+   [ "$shCryptTest" ] && shLog $shLog_TRACE "$shLogfunc: IV:$cipherIvSize" >&2
+  fi
+  if [ $cipherIvSize -gt 0 ];then
+   #$(( $cipherIvSize * 2 ))
+   local cipherKeySize=$cipherIvSize;
+   local testKey64="$(shRandomizeASCCI $cipherKeySize)"
+   local testIv64="$(shRandomizeASCCI $cipherIvSize)"
+   [ "$shCryptTest" ] && shLog $shLog_TRACE "$shLogfunc: test with salt and IV cipher/key/iv:$cipherKeySize/$($cmdPrintf $testKey64 | $cmdWc -c)/$($cmdPrintf $testIv64 | $cmdWc -c) " >&2
+   local jsonMessage="$($cmdPrintf $jsonMessage | jsonInObjectWrite key $testKey64)"
+   local jsonMessage="$($cmdPrintf $jsonMessage | jsonInObjectWrite iv $testIv64)"
+   clearData="$($cmdPrintf $jsonMessage | shCryptTestCipher)"
+   #cryptData="$(shPipeRead $cryptCryptPipe)"
+   if [ "$clearData" = "$testData" ];then
+    local ciphersIVSalt="$cipher:$ciphersIVSalt";local cipherAccept=1;
+    [ "$shCryptTest" ] && shLog $shLog_INFO "$shLogfunc:accept $cipher with salt and IV" >&2
+   fi
+   #[ "$shCryptTest" ] && shLog $shLog_DEBUG "$shLogfunc:clearData($($cmdPrintf $clearData | $cmdWc -c)):$clearData" >&2
+   #[ "$shCryptTest" ] && shLog $shLog_DEBUG "$shLogfunc:cryptData($($cmdPrintf $cryptData | $cmdWc -c)):$cryptData" >&2
+   [ "$shCryptTest" ] && shLog $shLog_TRACE "$shLogfunc: test without salt" >&2
+   local jsonMessage="$($cmdPrintf $jsonMessage | jsonInObjectWrite salt "" )"
+   clearData="$($cmdPrintf $jsonMessage | shCryptTestCipher $cipher)"
+   #cryptData="$(shPipeRead $cryptCryptPipe 2>/dev/null)"
+   if [ "$clearData" = "$testData" ];then
+    local ciphersIVNoSalt="$cipher:$ciphersIVNoSalt";local cipherAccept=1;
+    [ "$shCryptTest" ] && shLog $shLog_INFO "$shLogfunc:accept $cipher with IV and without salt" >&2
+   fi
+   #[ "$shCryptTest" ] && shLog $shLog_DEBUG "$shLogfunc:clearData($($cmdPrintf $clearData | $cmdWc -c)):$clearData" >&2
+   #[ "$shCryptTest" ] && shLog $shLog_DEBUG "$shLogfunc:cryptData($($cmdPrintf $cryptData | $cmdWc -c)):$cryptData" >&2
+   if [ $cipherAccept -eq 0 ];then
+    local ciphersReject="$cipher:$ciphersReject"
+    [ "$shCryptTest" ] && shLog $shLog_ERROR "$shLogfunc:reject $cipher with/without salt for IV" >&2
+   fi
+  fi
+ done
+ local shLogfunc="shCryptTestCiphers(END)"
+ local ciphers="$ciphersNoSalt:$ciphersSalt" 
+ [ "$shCryptTest" ] && shLog $shLog_INFO "$shLogfunc:accept($($cmdPrintf $ciphersSalt| $cmdTr ':' '\n' | $cmdWc -l)) with salt:\n$ciphersSalt" >&2
+ [ "$shCryptTest" ] && shLog $shLog_INFO "$shLogfunc:accept($($cmdPrintf $ciphersNoSalt| $cmdTr ':' '\n' | $cmdWc -l)) without salt:\n$ciphersNoSalt" >&2
+ [ "$shCryptTest" ] && shLog $shLog_INFO "$shLogfunc:accept($($cmdPrintf $ciphersIVSalt| $cmdTr ':' '\n' | $cmdWc -l)) with salt with IV:\n$ciphersIVSalt" >&2
+ [ "$shCryptTest" ] && shLog $shLog_INFO "$shLogfunc:accept($($cmdPrintf $ciphersIVNoSalt| $cmdTr ':' '\n' | $cmdWc -l)) without salt with IV:\n$ciphersIVNoSalt" >&2
+ [ "$shCryptTest" ] && shLog $shLog_ERROR "$shLogfunc:reject with/without salt:$ciphersReject" >&2
+ $cmdPrintf $ciphers | $cmdTr -d '\n'
+}
+
+#clearResponseData="$($cmdPrintf $clearData | shCryptTestCipher )"
+shCryptTestCipher() {
+ local shLogfunc="shCryptTestCipher()"
+ 
+ local jsonMessage="$($cmdCat <&0)"
+# [ "$shCryptTest" ] && shLog $shLog_TRACE "$shLogfunc:jsonMessage:$jsonMessage" >&2
+ local cipher="$($cmdPrintf $jsonMessage | jsonInObjectRead cipher)"
+ local pass="$($cmdPrintf $jsonMessage | jsonInObjectRead pass)"
+ local salt="$($cmdPrintf $jsonMessage | jsonInObjectRead salt)"
+ local clearData="$($cmdPrintf $jsonMessage | jsonInObjectRead data)"
+ 
+ local passSize="$($cmdPrintf "$pass" | $cmdWc -c)"
+ local saltSize="$($cmdPrintf "$salt" | $cmdWc -c)"
+ local dataSize="$($cmdPrintf "$clearData" | $cmdWc -c)"
+ 
+ [ "$shCryptTest" ] && shLog $shLog_TRACE "$shLogfunc:$cipher pass($passSize)|salt:($saltSize)|data($dataSize)" >&2
+ 
+ cryptData="$($cmdPrintf $jsonMessage | shCryptEncode $cipher)"
+ #[ "$shCryptTest" ] && shLog $shLog_DEBUG "$shLogfunc: cryptData( $($cmdPrintf $cryptData | $cmdWc -c) ): will try to decrypt" >&2;
+ 
+ local jsonMessageCrypt="$($cmdPrintf $jsonMessage | jsonInObjectWrite data $cryptData)"
+ $cmdPrintf "$jsonMessageCrypt\n" | shCryptDecode
+# $cmdPrintf "$cryptData" | shPipeWrite $cryptCryptPipe 2>/dev/null
+}

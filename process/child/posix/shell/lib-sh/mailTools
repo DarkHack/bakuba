@@ -1,0 +1,88 @@
+#!/bin/sh
+# Copyright 2011-2026 Nicolas "DarkHack" Chapuis
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+mailFormat() {
+ local message="$(echo $1 | sed ':a;N;$!ba;s/\n/#N80859095C#/g')"
+ local separate="$2"
+ local formatedMessage=""
+ 
+ for phrase in `echo $message | sed 's/¤/#N80859095C#/g' |  sed -e "s/#N80859095C##N80859095C#/#N95908580C#/g" | sed -e "s/#N80859095C#/\n/g" | sed -e "s/#N95908580C#/\n#N80859095C#/g" | tr " " "_" | tr "\n" " "`; do
+  #echo $phrase
+  if [ ${#phrase} -gt 76 ]; then
+   for offset in $(seq 1 76 ${#phrase}); do
+    local formatedMessage="$formatedMessage\n$(expr substr "$phrase" $offset 76 | tr "_" " ")"
+    if [ ! -z "$separate" ]; then
+      local formatedMessage="$formatedMessage$separate"
+    fi
+   done
+  else
+    local formatedMessage="$formatedMessage\n$(echo "$phrase" | tr "_" " ")"
+  fi
+ done
+ local formatedMessage="$(echo $formatedMessage | tr "\n" "¤" | sed -e "s/#N80859095C#/¤/g")"
+ echo $formatedMessage
+}
+#mailSend "$sujet" "$dest" "$message_txt" "$message_html" "$data"
+mailSend() {
+ local sujet="$1"
+ local dest="$2"
+ local message_txt="$3"
+ local message_html="$4"
+ local data="$5"
+ #echo $message_html
+ 
+ local attachement="$(echo $data | base64)"
+ 
+ local boundary="----="$(date +%s-%N | sha256sum | base64 | head -c 24 ; echo)""
+ local boundary_alt="----="$(date +%s-%N | sha256sum | base64 | head -c 24 ; echo)""
+ 
+
+ #local header="-a \"Reply-to: chapuis@darkweb.fr\""
+ #local header="-a \"MIME-Version: 1.0\""
+ #local header="Content-Type: multipart/mixed; boundary=$boundary"
+ 
+ local message="$message\n--$boundary"
+ local message="$message\nContent-Type: multipart/alternative; boundary=$boundary_alt\n"
+ local message="$message\n--$boundary_alt"
+ local message="$message\nContent-Type: text/plain; charset=\"Windows-1252\""
+ local message="$message\nContent-Transfer-Encoding: quoted-printable\n"
+ local message="$message\n$message_txt\n"
+ local message="$message\n--$boundary_alt"
+ local message="$message\nContent-Type: text/html; charset=\"Windows-1252\""
+ local message="$message\nContent-Transfer-Encoding: quoted-printable\n"
+ local message="$message\n$message_html\n"
+ local message="$message\n--$boundary_alt--\n"
+ local message="$message\n--$boundary"
+
+ local messageFormated="Content-Type: multipart/mixed; boundary=$boundary\nReply-to: chapuis@darkweb.fr\nMIME-Version: 1.0\nSubject: $sujet¤"
+ local messageFormated="$messageFormated\r$(mailFormat "`echo $message | sed ':a;N;$!ba;s/\n/¤/g'`" "=")"
+
+ local messageAtt="Content-Type: text/plain; name=\"log.txt\""
+ local messageAtt="$messageAtt\nContent-Transfer-Encoding: base64"
+ local messageAtt="$messageAtt\nContent-Disposition: attachment; filename=\"log.txt\"¤"
+ local messageAtt="$messageAtt\n$attachement\n\n"
+ local messageAtt="$(echo "$messageAtt" | tr "\n" "¤" | tr -d " ")"
+ local messageAttFormated="$messageAtt"
+ #"$(mailFormat "$messageAtt")"
+ 
+ local formatedMessage="$messageFormated$messageAttFormated¤--$boundary--¤"
+ echo $formatedMessage | tr "¤" "\n" | sendmail "$dest"
+# if [ -f /usr/bin/bsd-mailx ];then
+#  echo $formatedMessage | tr "¤" "\n" | /usr/bin/bsd-mailx -s "$sujet" -a "Content-Type: multipart/mixed; boundary=$boundary" -a "MIME-Version: 1.0" -a "Reply-to: chapuis@darkweb.fr" "$dest"
+# else
+#  echo "Content-Type: multipart/mixed; boundary=$boundary¤Reply-to: chapuis@darkweb.fr¤MIME-Version: 1.0¤Subject: $sujet¤¤$formatedMessage" | tr "¤" "\n" | sendmail "$dest"
+# fi
+ 
+}

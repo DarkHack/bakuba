@@ -1,0 +1,320 @@
+#!/bin/sh
+# Copyright 2011-2026 Nicolas "DarkHack" Chapuis
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+cmdList="cmdSh cmdEcho cmdPrintf cmdTr cmdCat cmdMkdir"
+
+for cmd in $cmdList;do
+ if [ -z "$(eval echo \$$cmd)" ];then echo "[FATAL] missing cmd:$cmd";exit 1;fi
+done
+if type "shInclude" > /dev/null; then
+ shDebug 2 "shTools ever include"
+ return ;
+fi
+
+if [ ! -d "/ram" ];then $cmdMkdir "/ram";fi
+if [ -f "/etc/fstab" ];then
+ if [ -z "$(cat /etc/fstab | grep '^tmpfs' | grep '/ram')" ];then
+  ramSize="$(($(free -m | grep '^Mem' | tr -s '[:blank:]' ' ' | cut -f 2 -d ' ' | tr -d 'M')* 1 / 100))"
+  $cmdPrintf "tmpfs                                           /ram    tmpfs   defaults,size=${ramSize}M        0       0" >> /etc/fstab
+  mount -a
+ fi
+fi
+shTmpDir="/ram/shtools"
+shPsFile="$shTmpDir/$$.ps"
+if [ -f "$shPsFile" ];then
+ shIncludeFileEverInclude=""
+ if [ -f "$shIncludeBddFile" ];then shIncludeFileEverInclude="$(cat $shIncludeBddFile)";fi
+ return ;
+else
+ if [ ! -d "$shTmpDir" ];then mkdir -p $shTmpDir;fi
+ echo "$(ps -p $$ -o comm=)" > $shPsFile 2>&1
+ for dirtyFile in $(ls $shTmpDir/*.ps 2>/dev/null);do
+  dirtyPid=$(echo $dirtyFile | rev | cut -d'/' -f 1 | rev | cut -d '.' -f 1)
+  newName="$(ps -p $dirtyPid -o comm= 2>&1)"
+  if [ -z "$newName" ] || [ ! "$(cat $dirtyFile 2>&1)" = "$newName" ];then
+   rm $shTmpDir/$dirtyPid.* 2>&1 >> /dev/null
+  fi
+ done
+fi
+
+shIncludeBddFile="$shTmpDir/$$.include"
+export shIncludeFileEverInclude
+export shIncludeInWorkingFile
+
+shDebugHiddenMemory="$shTmpDir/$$.hiddendebug"
+export shDebugHiddenMemory
+
+#type mailSend 2>&1 >> /dev/null || . $racine/lib-sh/mailTools
+
+# error from 'shExecute' or 'shExecuteNoLog'
+#shExecuteErrorMessage=""
+# all errors from script
+#shErrorMessage=""
+# all log from script
+#shTotalLog=""
+# script name for log
+#shLog=""
+
+shInclude() {
+ local file="$1"
+ local fileHash="$(echo $file | md5sum | cut -f 1 -d ' ')"
+ local fileIsEverInclude=0
+ 
+ if [ -f "$shIncludeBddFile" ];then shIncludeFileEverInclude="$(cat $shIncludeBddFile)";fi
+ for fileHashEverInclude in $(echo $shIncludeFileEverInclude);do
+  if [ "$fileHash" = "$fileHashEverInclude" ];then
+#   local fileIsEverInclude=1
+   break
+  fi
+ done
+ for fileHashEverInclude in $(echo $shIncludeInWorkingFile);do
+  if [ "$file" = "$fileHashEverInclude" ];then
+   local fileIsEverInclude=1
+   break
+  fi
+ done
+ if [ "$fileIsEverInclude" -eq 0 ];then
+  shIncludeInWorkingFile="$shIncludeInWorkingFile $file"
+  shIncludeFileEverInclude="$shIncludeFileEverInclude $fileHash";echo "$shIncludeFileEverInclude" > $shIncludeBddFile
+  local secureHash="$(echo $shIncludeInWorkingFile | md5sum | cut -f 1 -d ' ')"
+  if [ -f "$shIncludeBddFile.more" ] && [ -n "$(cat $shIncludeBddFile.more | grep $secureHash)" ];then
+   echo "$shIncludeInWorkingFile (double)" >> $shIncludeBddFile.more
+   return ;
+  else
+   echo "$secureHash ($shIncludeInWorkingFile)" >> $shIncludeBddFile.more
+  fi
+  
+  local err="$(. "$file" 2>&1)"
+  if [ -n "$err" ];then
+   echo "shDebug [ ERROR ]shInclude echec : $file ($err)"
+  else
+   echo ". $file"
+  fi
+ fi
+}
+shIncludeET() {
+ local file="$1"
+ local err="$(. "$file" 2>&1)"
+ if [ -n "$err" ];then
+  echo "shDebug [ ERROR ] shIncludeET echec : $file ($err)"
+ else
+  echo ". $file"
+ fi
+}
+shExecute() {
+ shExecuteErrorMessage=""
+ local params=""
+ for param in $*;do
+  local params="$params¤$param"
+ done
+ if ! shExecuteNoLog "$params";then
+  shDebug "[ SH_ERROR ] $shExecuteErrorMessage"
+  shErrorMessage="$shErrorMessage;$shExecuteErrorMessage"
+  return 1
+ else
+  return 0
+ fi
+}
+shExecuteNoLog() {
+ shExecuteErrorMessage=""
+ local params=""
+ for param in $*;do
+  local params="$params¤$param"
+ done
+ for execute in $(echo "$params" | tr " " "¤" | tr ";" " ");do
+  local instruction="$(echo $execute | tr "¤" " ")"
+  local err="$($instruction 2>&1)"
+  if [ ! -z "$err" ];then
+   shExecuteErrorMessage="$shExecuteErrorMessage;($instruction) err:$err"
+   return 1
+  fi
+ done
+ return 0
+}
+shUserExist() {
+ for param in $*;do
+  for user in $(cat /etc/passwd | cut -d':' -f1);do
+   if [ "$user" = "$param" ];then
+    return 0
+   fi
+  done
+ done
+ return 1
+}
+shGroupExist() {
+ for param in $*;do
+  for group in $(cat /etc/group | cut -d':' -f1);do
+   if [ "$group" = "$param" ];then
+    return 0
+   fi
+  done
+ done
+ return 1
+}
+#shDebugHiddenMemory
+shDebugHidden() {
+ local params=""
+ local first=1
+ for param in $*;do
+  if [ $first -eq 1 ] && [ "$param" -eq "$param" ] 2>/dev/null ;then
+   if [ $param -eq 0 ];then
+    local params="$params [ ERREUR ]"
+   else if [ $param -eq 1 ];then
+    local params="$params [ INFO ]"
+   else if [ $param -eq 2 ];then
+    local params="$params [ DEBUG ]"
+   fi fi fi
+  else local params="$params $param";fi
+  local first=0
+ done
+ shTotalLog="$shTotalLog;$(date "+%Y/%m/%d %H:%M:%S") [$shLog] $params"
+ if [ ! -z ""$shDebugEnable"" ]; then
+  echo ""$(date "+%Y/%m/%d %H:%M:%S")" ($$)$shLog$params" >> "$shDebugHiddenMemory" 2>&1
+ fi
+}
+shWaitRandom() {
+ local randomSleep="$(shuf -i 0-1 -n 1).$(shuf -i 1-999 -n 1)"
+ sleep $randomSleep
+}
+shWaitGetFile() {
+ echo "$shTmpDir/sh_"$1".pid"
+}
+shWaitState() {
+ local pidfile="$(shWaitGetFile "$1")"
+ if [ -f "$pidfile" ] ;then
+  return 1
+ fi
+ return 0
+}
+shWaitScript() {
+ local pidfile="$(shWaitGetFile "$1")"
+ 
+ shWaitRandom
+ 
+ if [ -f "$pidfile" ] ;then
+  local pidtowait=$(cat $pidfile)
+ fi
+ 
+ if [ "$pidtowait" != "$$" ] ; then
+  local xtimeout=$(shuf -i 300-500 -n 1)
+  while [ -f "$pidfile" ] && [ "$xtimeout" -gt 0 ] ; do
+   local xtimeout=$((xtimeout-1))
+   local pidtowait=$(cat $pidfile)
+   if [ -z "$(ps ax | cut -d' ' -f1,2,3,4,5,6 | grep "$pidtowait")" ]
+    then
+    shDebug "wait tmp pid:$pidfile, $pidtowait is ever dead :$(ps ax | grep "$pidtowait")"
+    [ -n "$pidfile" ] && [ -f "$pidfile" ] && shExecute "rm "$pidfile""
+   else
+    # shDebug "wait tmp pid :$pidfile, $pidtowait ($xtimeout)"
+    shExecute "wait "$pidtowait""
+   fi
+   shWaitRandom
+  done
+  if [ ! "$xtimeout" -gt 0 ] && [ ! -z "$(ps ax | cut -d' ' -f1,2,3,4,5,6 | grep "$pidtowait")" ]
+  then
+   shDebug "[***WARNING***] forced to kill ($$) $* $pidtowait :$(ps ax | grep "$pidtowait")"
+   shExecute "kill -9 "$pidtowait""
+  fi
+  local pidtowait=""
+ fi
+ 
+ if [ -z "$pidtowait" ] || [ "$pidtowait" -ne "$$" ] ; then
+  echo $$ > $pidfile
+#  shDebug "[*** BEGIN ***] pidfile:$pidfile ($$) $*"
+  return 0
+ else
+  [ -n "$pidfile" ] && [ -f "$pidfile" ] && shExecute "rm $pidfile"
+#  shDebug "[**** END ****] ($$) $*"
+  return 1
+ fi
+}
+
+shStartStopScript() {
+ if shWaitScript ""$1"" ; then
+  if [ ! -z "$shErrorMessage" ] ; then
+    local dest="chapuis@darkweb.fr"
+    local sujet="[$(hostname -f) - $(date "+%Y/%m/%d %H:%M")] '$shLog' : Error on script"
+    local message_txt="Some errors are append on script execution :\n$(echo $shErrorMessage | tr "\n" "¤" | tr ";" "¤")\r\n"
+    local message_html="<html><head></head><body><b>Hi my friend, I real need you.</b><br/>Some errors are append on script execution :<br/>$(echo $shErrorMessage | sed -e "s/\n/<br\/>¤/g" | sed -e "s/;/<br\/>¤/g")<br/><i>thanks.</i></body></html>"
+    local data="$(echo $shTotalLog | tr ";" "\r\n")"
+    mailSend "$sujet" "$dest" "$message_txt" "$message_html" "$data"
+  fi
+ fi
+}
+
+shLunchEncapsulator() {
+ for param in $*;do
+  local params="$params $param"
+ done
+ "$params"
+}
+
+shMoveToOld() {
+ fullPath="$1"
+ if [ ! -f $fullPath ];then return 1;fi
+ file="$(echo $fullPath | rev | cut -f 1 -d'/' | rev)"
+ folder="$(echo $fullPath | rev | cut -f 2- -d'/' | rev)"
+ cpt=0
+ answer=""
+ echo ""
+ while [ ! "$answer" = "y" ] && [ ! "$answer" = "n" ];do
+  echo -e "\rbackup file:$folder/$file (y/n) :\c"
+  read answer
+ done
+ if  [ "$answer" = "n" ];then return
+ else
+  while [ -f "$folder/${file}_old_$cpt" ];do
+   cpt=`expr $cpt + 1`
+  done
+  echo "file:$file folder:$folder to $folder/${file}_old_$cpt"
+  mv $folder/${file} $folder/${file}_old_$cpt
+ fi
+}
+shDirGetSubFolder() {
+ local basePath="$1"
+ local subPath="$2"
+
+ local cpt=2
+ while [ "$(echo $basePath | rev | cut -f2- -d'/' | rev)" != "$(echo $subPath | rev | cut -f${cpt}- -d'/' | rev)" ];do
+#  echo "$cpt :$(echo $basePath | rev | cut -f2- -d'/' | rev) $(echo $subPath | rev | cut -f${cpt}- -d'/' | rev)"
+  local cpt=$(( cpt + 1 ))
+ done
+ local subFolder="$(echo $subPath | rev | cut -f1-$((cpt-1)) -d'/' | rev)"
+ echo "$subFolder"
+}
+shDirGenerateSubId() {
+ local basePath="$1"
+ local subPath="$2"
+ local subFolder="$(shDirGetSubFolder "$basePath" "$subPath")"
+ local strSubId="$(echo $subFolder | tr '/' '-' )"
+ echo "$strSubId"
+}
+shErrorOnMissing() {
+ for param in $*;do
+  local params="$params $param"
+ done
+ for myParam in $params;do
+  if [ -z "$(eval echo \$$myParam)" ];then shDebug 0 ""$log" missing :$myParam";exit 1;
+  else shDebugHidden 1 ""$log" $myParam:\t\t$(eval echo \$$myParam | cut -c1-15)";fi
+ done
+}
+shWarnOnMissing() {
+ for param in $*;do
+  local params="$params $param"
+ done
+ for myParam in $params;do
+  if [ -n "$(eval echo \$$myParam)" ];then shDebugHidden 1 ""$log" $myParam:\t\t$(eval echo \$$myParam | cut -c1-15)";fi
+ done
+}
